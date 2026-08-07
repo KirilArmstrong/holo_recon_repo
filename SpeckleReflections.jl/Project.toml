@@ -1,0 +1,32 @@
+name = "SpeckleReflections"
+uuid = "54440073-be3e-4787-8cdb-792afc36395d"
+version = "0.1.0"
+authors = ["RainerHeintzmann <heintzmann@gmail.com>"]
+
+[deps]
+FindShift = "643ec891-bf64-479f-8088-26ff5ce1b396"
+FourierTools = "b18b359b-aebc-45ac-a139-9c0ccbb2871e"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MultivariateStats = "6f286f6a-111f-5878-ab1e-185364afe411"
+NDTools = "98581153-e998-4eef-8d0d-5ec2c052313d"
+Noise = "81d43f40-5267-43b7-ae1c-8b967f377efa"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SeparableFunctions = "c8c7ead4-852c-491e-a42d-3d43bc74259e"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+
+[weakdeps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+
+[extensions]
+CUDASupportExt = ["CUDA"]
+
+[compat]
+FindShift = "0.3.0"
+FourierTools = "0.5"
+LinearAlgebra = "1.12"
+Random = "1.11.0"
+SeparableFunctions = "0.4, 0.5"
+
+[extras]
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
