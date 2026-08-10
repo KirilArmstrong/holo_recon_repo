@@ -18,13 +18,16 @@ function my_reclaim()
     println("garbage collected, reclaimed CUDA mem.")
 end
 
+
 function simulate_and_reconstruct()
    sz = (501,501,51)
-   settings = get_settings(lam=0.488, n=1.5151, NA_illu=1.4, NA_det=1.4,  mag=63, ref_plane=1, samp_z = 0.05, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
+   k_vec = LinRange(2*π/0.805, 2*π/0.885, 100);
+   lam_vec=2*π./k_vec;
+   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
    num_photons = 100
    if (true)
-      obj = generate_object_3d(type="resolution_dots"; settings.samp, res_dist=0, size_xyz=sz, dz=24);
-      name_simu = "pw_res_dot_z24";
+      obj = generate_object_3d(type="Discs"; settings.samp, res_dist=0, size_xyz=sz, dz=50);
+      name_simu = "test_sim_discs";
    else
       obj = filaments3D(sz) 
       # obj1 = generate_object_3d(type="Discs"; settings.samp, res_dist=5, size_xyz=sz, dz=50);
@@ -37,27 +40,28 @@ function simulate_and_reconstruct()
    if (use_cuda)
         obj = cu(obj);
    end
-   @time data_all, illu_all, phase_offset = do_simulation(obj, settings; Nimag = 1, random_phases=random_phases, reclaim_fct=my_reclaim, num_photons = num_photons); #   34 sec, 4 Gb GPU, 100 imgs, 301x301x50
+
+   @time data_all, illu_all, phase_offset = do_simulation(obj, settings; random_phases=random_phases, reclaim_fct=my_reclaim, num_photons = num_photons); #   34 sec, 4 Gb GPU, 100 imgs, 301x301x50
    GC.gc()
    CUDA.reclaim()
 
-   if (false)
-      folder = raw"../../simulations/resolution_sim/";
-      save_all(folder, name_simu, settings, data_all, illu_all, phase_offset)
+   if (true)
+      folder = raw"../../simulations/";
+      save_all(folder, name_simu, settings, data_all, illu_all; phase_offset=nothing)
    end
 
    #------Reconstruction--Loads the saved data ----------
 
    use_cuda = true
-   if (true) # paste if the code before was not run
+   if (false) # paste if the code before was not run
       folder = raw"../../simulations/plane_discs/";
       name_simu = "plane_discs";
    end
 
    preprocess_fct = nothing;
    slice_arr = load_data(folder*name_simu*".h5"; range=1:1)[1];
-   pup_dia=(116,116);
-   #@vt abs.(SpeckleReflections.ft2d(slice_arr))[]
+   pup_dia=(52,52);
+   #@vt abs.(SpeckleReflections.ft2d(slice_arr))
    if (false)  # If you use this less memory should be consumed.
       pad_factor = 2
       holo_params = get_holo_params(slice_arr, pad_factor; pup_dia=pup_dia)
@@ -66,7 +70,7 @@ function simulate_and_reconstruct()
       preprocess_fct = (dat) -> rec_holo_shift(dat, holo_params, ref)
    end
 
-   settings, data_all, illu_all, phase_offset = load_all(folder, name_simu; preprocess_fct=preprocess_fct);
+   settings, data_all, illu_all = load_all(folder, name_simu; preprocess_fct=preprocess_fct);
 
 
    if (false) # just to display the data
@@ -83,12 +87,34 @@ function simulate_and_reconstruct()
       illu_all = cu.(illu_all);
    end;
  
-   Nz = 51; # how many slices to reconstruct
-   settings = get_settings(settings; samp=(settings.samp[1], settings.samp[2],0.028), ref_plane=1)
+   Nz = 2; # how many slices to reconstruct
+   settings = get_settings(settings; samp=(settings.samp[1], settings.samp[2],-100.0))
+   # define position of 1. orders
+   # @vt abs.(SpeckleReflections.ft2d(data_all[1])) abs.(SpeckleReflections.ft2d(data_all[end]))
+   abs_pos_start = 95.5;
+   abs_pos_end = 109.6;
+   abs_pos = LinRange(abs_pos_start, abs_pos_end, length(data_all));
+   
+   # define size of result
+   pad_fac = 2;
+   holo_params = SpeckleReflections.get_holo_params(size(data_all[1]), pad_fac; pup_dia=pup_dia)
+   final_size = (holo_params.preserve_size) ? size(data_all[1]) : pup_dia .* holo_params.pad_fac # holo_params.pad_size
+   res_obj = similar(complex(data_all[1]), (final_size[1], final_size[2], Nz))
+   res_stack = similar(complex(data_all[1]), (final_size[1], final_size[2], length(data_all)))
+   res_stack_prop = similar(complex(data_all[1]), (final_size[1], final_size[2], length(data_all)));
+   # loop over wavlength
+   for idx in range(1, length(data_all))
+      # define ref wave
+      k_ref = get_rel_ref(size(data_all[idx]), (abs_pos[idx], abs_pos[idx]))
+      ref = gen_ref(data_all[idx], k_ref)
+      SpeckleReflections.reconstruct_plane_hologram!(res_obj, data_all[idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref)
+      res_stack[:,:,idx] = res_obj[:,:,1];
+      res_stack_prop[:,:,idx] = res_obj[:,:,2];
+   end
 
-
-   @time rec_obj_pw, phase_offsets_found_zeiss = main_reconstruction(data_all, illu_all, settings, Nz; pup_dia=pup_dia,
-                                                                  find_phases=false, calib_mode=CalibDivide, calib_sum=true);
+   rec_vol = SpeckleReflections.ift(res_stack,3);
+   res_vol_prop = SpeckleReflections.ift(res_stack_prop,3);
+   @vt abs.(rec_vol) abs.(res_vol_prop)
                                                               
    
    

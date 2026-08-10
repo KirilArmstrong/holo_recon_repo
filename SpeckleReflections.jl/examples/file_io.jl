@@ -9,19 +9,21 @@ function save_data(folder, fname, data, fileext=".h5") # save a single file eg. 
    end
 end
 
-function save_all(folder, fname, settings, data_all, illu_all, phase_offset, fileext=".h5")
+function save_all(folder, fname, settings, data_all, illu_all; phase_offset=nothing, fileext=".h5")
    h5open(folder*fname*fileext, "w") do fd_holo  # overwrites the current file completely!
-        h5open(folder*"illu_"*fname*fileext, "w") do fd_illu
-            h5open(folder*"phase_"*fname*fileext, "w") do fd_phase
-                Nimag = length(data_all)
-                for img_num in range(1,Nimag)
-                    write(fd_holo, string(img_num), data_all[img_num])
-                    write(fd_illu, string(img_num), illu_all[img_num])
-                    # write(fd_ref, string(img_num), ref_all[img_num])
-                    write(fd_phase, string(img_num), phase_offset[img_num])
-                end
-            end # do
-        end # do
+      h5open(folder*"illu_"*fname*fileext, "w") do fd_illu
+         h5open(folder*"phase_"*fname*fileext, "w") do fd_phase
+            Nimag = length(data_all)
+            for img_num in range(1,Nimag)
+               write(fd_holo, string(img_num), data_all[img_num])
+               write(fd_illu, string(img_num), illu_all[img_num])
+               # write(fd_ref, string(img_num), ref_all[img_num])
+               if !isnothing(phase_offset)
+                  write(fd_phase, string(img_num), phase_offset[img_num])
+               end
+            end
+         end # do
+      end # do
    end # do
     # h5open(folder*"ref_"*fname*fileext, "w") do fd_ref
    h5open(folder*"settings_"*fname*fileext, "w") do file
@@ -30,7 +32,7 @@ function save_all(folder, fname, settings, data_all, illu_all, phase_offset, fil
       serialize(buf, settings)
       # write(file, "settings", buf)
       attrs(file)["settings"] = take!(buf)
-    end # do
+   end # do
    return
 end
 
@@ -129,13 +131,13 @@ function load_all(folder, fname, fileext=".h5"; roi = nothing, T=Float32, prepro
    # [h5read(folder*fname*fileext,string(d)) for d in 1:Nimag]; # load all the data
    # illu_all = [h5read(folder*"illu_"*fname*fileext,string(d)) for d in 1:Nimag]; # load all the data
    # ref_all = [h5read(folder*"ref_"*fname*fileext,string(d)) for d in 1:Nimag]; # load all the data
-   phase_offset = [h5read(folder*"phase_"*fname*fileext,string(d)) for d in range]; # load all the data
+   #phase_offset = [h5read(folder*"phase_"*fname*fileext,string(d)) for d in range]; # load all the data
    settings = h5open(folder*"settings_"*fname*fileext,"r") do file
       attrs(file)["settings"]
       deserialize(IOBuffer(attrs(file)["settings"]))
    end
    
-   return settings, data_all, illu_all, phase_offset
+   return settings, data_all, illu_all
 end
 
 function show_keys(fname, fileext=".h5")

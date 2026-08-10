@@ -3,14 +3,14 @@ function get_propagator_mask_3d(field, lam, samp, NA=1.0)
    return ft2d(jinc.(sqrt.(rr2sep)));
 end
 
-function propagate_field(field::AbstractArray, settings, NA; Nz = size(field, 3), pad_factor=2)
+function propagate_field(field::AbstractArray, lam, settings, NA; Nz = size(field, 3), pad_factor=2)
    osz = size(field);
    nsz=(osz[1].*pad_factor, osz[2].*pad_factor, size(field,3)); # pad only first two dimensions!
    field_pad = select_region(field, new_size=nsz);
 
    PType = complex_arr_type(typeof(expand_dims(field_pad, Val(3))))
-   propagator = propagator_col(PType, (size(field_pad)[1:2]..., Nz), settings.samp, settings.lam/settings.n; ref_idx = settings.ref_plane)
-   aperture = get_propagator_mask_3d(field_pad, settings.lam, settings.samp, NA)
+   propagator = propagator_col(PType, (size(field_pad)[1:2]..., Nz), settings.samp, lam/settings.n; ref_idx = 1)
+   aperture = get_propagator_mask_3d(field_pad, lam, settings.samp, NA)
 
    propagated_f = ift2d(ft2d(field_pad) .* propagator .* aperture); 
 
@@ -18,140 +18,6 @@ function propagate_field(field::AbstractArray, settings, NA; Nz = size(field, 3)
    propagated_field=select_region(propagated_f; new_size=osz);
    return propagated_field;
 end
-
-# function propagate_field_3d_r(field::AbstractArray{T, 3}, lam, samp; pad_factor=2, Nz=1, prop_init=nothing) where {T}
-#    osz = size(field);
-#    nsz=(osz[1].*pad_factor, osz[2].*pad_factor, osz[3]); # pad only first two dimensions!
-#    field_pad = select_region(field, new_size=nsz);
-#    # propagated = similar(field, nsz);
-#    if isnothing(prop_init)
-#       if Nz > 1
-#          res = [];
-#          for slc_nbr in range(1, Nz)
-#             proped = propagate_field_2d(field_pad[:,:,slc_nbr], (slc_nbr-1)*samp[3], lam, samp[1:2]);
-#             push!(res, proped);
-#          end
-#          propagated_f = cat(res..., dims=3);
-#       else
-#          propagated_f =  propagate_field_2d(field_pad, samp[3], lam, samp[1:2]);
-#       end
-#    else
-#       propagated_f =  propagate_field_2d(field_pad, prop_init, lam, samp[1:2]);
-#    end
-#    # crop back to original size
-#    propagated_field=select_region(propagated_f; new_size=osz);
-#    return propagated_field;
-# end
-
-# function propagate_field_3d_r(field::AbstractMatrix, lam, samp; pad_factor=2, Nz=1, prop_init=nothing)
-#    RT = real(eltype(field))
-#    lam = RT(lam)
-#    samp = RT.(samp)
-#    prop_init = isnothing(prop_init) ? nothing : RT.(prop_init)
-#    nsz=size(field).*pad_factor;
-#    osz = (size(field)[1], size(field)[2],Nz);
-#    field_pad = select_region(field, new_size=nsz);
-#    propagated_f = similar(field, (nsz...,Nz));
-#    if isnothing(prop_init)
-#       if Nz > 1
-#          # res = [];
-#          for slc_nbr in range(1, Nz)
-#             prop_dist = (slc_nbr-1)*samp[3]
-#             propagated_f[:, :, slc_nbr] .= propagate_field_2d(field_pad, prop_dist, lam, samp[1:2]);
-#             # push!(res, proped);
-#          end
-#          # propagated_f = cat(res..., dims=3);
-#       else
-#          prop_dist = samp[3] 
-#          propagated_f .=  propagate_field_2d(field_pad, prop_dist, lam, samp[1:2]);
-#       end
-#    else
-#       for (slice, dist) in zip(eachslice(propagated_f, dims=3), prop_init)
-#          slice .=  propagate_field_2d(field_pad, dist, lam, samp[1:2]);
-#       end
-#    end
-#    # crop back to original size
-#    propagated_field=select_region(propagated_f; new_size=osz);
-#    return propagated_field;
-# end
-
-# function propagate_field_3d(field::AbstractArray{T, 3}, lam, samp; pad_factor=2, Nz=1) where {T}
-#    nsz=(size(field)[1].*pad_factor, size(field)[2].*pad_factor, size(field)[3]); # pad only first two dimensions!
-#    osz = size(field);
-#    field_pad = select_region(field, new_size=nsz);
-#    propagated = similar(field, (nsz));
-#    prop2d = get_propagator(field_pad, samp[3], lam, samp[1:2]);  # propagation between layers (dz(n) = n*samp[3]; n=1:N)
-#    prop3d = prop2d.^reorient(0:Nz-1, Val(3)) .* get_propagator_mask(field_pad, lam, samp) #.* prop2d_init .* get_propagator_mask_3d(field_pad, lam, samp)  .*
-#    # propagate
-#    if Nz > 1  
-#       propagated .= ft2d(field_pad).* prop3d;
-#    else
-#       if prop_init==0
-#          propagated = ft2d(field_pad).* prop2d .* get_propagator_mask(field_pad, lam, samp);
-#       else
-#          propagated = ft2d(field_pad).* get_propagator(field_pad[1:2], prop_init, lam, samp[1:2]) .* get_propagator_mask(field_pad, lam, samp);
-#       end
-#    end
-#    prop_corr = ift2d(propagated);
-   
-#    # crop back to original size
-#    propagated_field=select_region(prop_corr; new_size=osz);
-#    return propagated_field;
-# end
-
-# function propagate_field_3d(field::AbstractMatrix, lam, samp; pad_factor=2, Nz=1, prop_init = 0)
-#    nsz=size(field).*pad_factor;
-#    osz = (size(field)[1], size(field)[2],Nz);
-#    field_pad = select_region(field, new_size=nsz);
-#    propagated = similar(field, (nsz...,Nz));
-#    prop2d = get_propagator(field_pad, samp[3], lam, samp[1:2]);  # propagation between layers (dz(n) = n*samp[3]; n=1:N)
-#    prop3d = prop2d.^reorient(0:Nz-1, Val(3)) .* get_propagator_mask(field_pad, lam, samp)
-#    # propagate
-#    if Nz > 1  
-#       propagated .= ft2d(field_pad).* prop3d;
-#    else
-#       if prop_init==0
-#          propagated = ft2d(field_pad).* prop2d.* get_propagator_mask(field_pad, lam, samp);
-#       else
-#          propagated = ft2d(field_pad).* get_propagator(field_pad, prop_init, lam, samp[1:2]) .* get_propagator_mask(field_pad, lam, samp);
-#       end
-#    end
-#    prop_corr = ift2d(propagated);
-
-   
-#    # crop back to original size
-#    propagated_field=select_region(prop_corr; new_size=osz);
-#    return propagated_field;
-# end
-
-# old version
-# function propagate_field_3d_old(field, lam, samp; pad_factor=2, Nz=1, distance=0)
-#    # To Do: make two functions depending if ndim(field) is 2 or 3
-#    if ndims(field) < 3
-#       nsz=size(field).*pad_factor;
-#       osz = (size(field)[1], size(field)[2],Nz);
-#       propagated = similar(field, (nsz...,Nz));
-#    else
-#       nsz=(size(field)[1].*pad_factor, size(field)[2].*pad_factor, size(field)[3]); # pad only first two dimensions!
-#       osz = size(field);
-#       propagated = similar(field, (nsz));
-#    end
-#    field_pad = select_region(field, new_size=nsz);
-#    prop2d_init = get_propagator(field_pad, distance, lam, samp[1:2]); # propagation to detector
-#    prop2d = get_propagator(field_pad, samp[3], lam, samp[1:2]);  # propagation between layers (dz(n) = n*samp[3]; n=1:N)
-#    prop3d = prop2d.^reorient(0:Nz-1, Val(3)) .* get_propagator_mask_3d(field_pad, lam, samp) #.* prop2d_init .* get_propagator_mask_3d(field_pad, lam, samp)  .*
-#    # propagate
-#    if Nz > 1  
-#       propagated .= ft2d(field_pad).* prop3d;
-#    else
-#         propagated = ft2d(field_pad).* prop2d;
-#    end
-#    propagated_f = ift2d(propagated);
-   
-#    # crop back to original size
-#    propagated_field=select_region(propagated_f; new_size=osz);
-#    return propagated_field;
-# end
 
 """
    gen_illumination(obj, settings)
@@ -167,21 +33,21 @@ to the according layer in the object.
 + samp: sampling of the object
 + NA: NA of the illumination
 """
-function gen_illumination(obj, settings)
-   return gen_illumination(settings.illu_mode, obj, settings);
+function gen_illumination(obj, lam, settings)
+   return gen_illumination(settings.illu_mode, obj, lam, settings);
 end
 
-function gen_illumination(::Type{Plane}, obj, settings)
+function gen_illumination(::Type{Plane}, obj, lam, settings)
    println("producing plane illumination")
    # plane = ones(ComplexF64,size(obj)[1:2])
    plane = similar(obj, size(obj)[1:2]) # RH
    plane .= 1; # RH
-   amp_prop = propagate_field(plane, settings, settings.NA_illu; Nz=size(obj)[3], pad_factor = 1);
+   amp_prop = propagate_field(plane, lam, settings, settings.NA_illu; Nz=size(obj)[3], pad_factor = 1);
    #amp_prop = exp_ikx_col(Array{eltype(obj)}, size(obj), shift_by=(0.0, 0.0, -size(obj,3)*samp[3]/lam)); # 
    return amp_prop
 end
 
-function gen_illumination(::Type{Speckle}, obj, settings)
+function gen_illumination(::Type{Speckle}, obj, lam, settings)
    sz2d = size(obj)[1:2];
    phi_spek = similar(obj, sz2d); # RH
    rand!(phi_spek); # RH
@@ -190,7 +56,7 @@ function gen_illumination(::Type{Speckle}, obj, settings)
    # rr2sep = rr2_sep(real_arr_type(typeof(obj)), sz2d, scale = 1 ./r_pupil);
    # pup = ft(exp.(1im.*phi_spek)) .*(rr2sep .< 1);
    illu = exp.(1im.*phi_spek) # ift(pup);
-   illu = propagate_field(illu, settings, settings.NA_illu; Nz=size(obj)[3], pad_factor = 1);
+   illu = propagate_field(illu, lam, settings, settings.NA_illu; Nz=size(obj)[3], pad_factor = 1);
    return illu;
 end
 
@@ -202,7 +68,7 @@ generate a reference wave,
 + obj: object for which to generate the reference wave
 + settings: contains the necessary information to calculate the reference wave
 """
-function gen_ref(obj, settings)
+function gen_ref(obj, k_ref)
    RT = real(eltype(obj))
    Nx = size(obj)[1];
    Ny = size(obj)[2];
@@ -212,8 +78,8 @@ function gen_ref(obj, settings)
    x .= range(0,Nx-1,Nx); # x-coordinte vector
    y = similar(obj, 1, Ny)
    y .= reorient(range(0,Ny-1,Ny),Val(2)); # y-coordinate vector
-   line_x = exp.(-x.*(1im.*RT(2pi*settings.k_ref[1]))); # single horizontal line in x of ref field
-   line_y = exp.(-y.*(1im.*RT(2pi*settings.k_ref[2]))); # single horizontal line in x of ref field
+   line_x = exp.(-x.*(1im.*RT(2pi*k_ref[1]))); # single horizontal line in x of ref field
+   line_y = exp.(-y.*(1im.*RT(2pi*k_ref[2]))); # single horizontal line in x of ref field
    field = line_x .* line_y; # use the outer product to calculate the 2D reference wave fast
    return field;
 end

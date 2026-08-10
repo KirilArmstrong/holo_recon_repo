@@ -50,9 +50,9 @@ function generate_object_3d(;basetype = Float32, type="Dots",samp, Ndots=1, res_
     elseif type == "Discs"
         obj = zeros(CT,sz);
         cent = round.(Int, sz[1:2]./2);
-        radius = (6,6);
-        disc1 = disc(sz[1:2], radius, offset= cent.-(12,0)); #disc(sz[1:2], round.(Int,sz[1:2]./8), offset=(sz[1]/4,sz[2]/2));
-        disc2 = disc(sz[1:2], radius, offset=cent.+(12,0));#disc(sz[1:2], round.(Int,sz[1:2]./8), offset=(3*sz[1]/4,sz[2]/2));
+        radius = sz[1:2].÷8 #(6,6);
+        disc1 = disc(sz[1:2], radius, offset= cent.-(sz[1]÷4,0)); #disc(sz[1:2], round.(Int,sz[1:2]./8), offset=);
+        disc2 = disc(sz[1:2], radius, offset=cent.+(sz[1]÷4,0));#disc(sz[1:2], round.(Int,sz[1:2]./8), offset=(3*sz[1]/4,sz[2]/2));
         obj[:,:,1] = disc1
         obj[:,:,dz] = disc2
         # disc2 = disc(sz[1:2], round.(Int,sz[1:2]./8), offset=(sz[1]/2,sz[2]/2));

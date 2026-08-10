@@ -9,7 +9,7 @@
 +  `illu_all`:  Vector of either real space data or pre-extracted holograms
 
 """
-function main_reconstruction(data_all, illu_all, settings, Nz;   
+function main_reconstruction(data_all, illu_all, settings, Nz, lam;   
                              pup_dia=size(data_all[1])[1:2], find_phases=true, phase_method="ABS", phase_iterations=1, 
                              mask_thresh=0.0, verbose=false, calib_mode::Type=CalibConj, calib_sum=true,
                             gc_period = 5, reclaim_fct = GC.gc, holo_params=nothing)
@@ -66,7 +66,7 @@ function main_reconstruction(data_all, illu_all, settings, Nz;
             rec_field_illu_ft = (eltype(data_illu) <: Real) ? rec_holo_shift(data_illu, holo_params, ref) : data_illu
 
             if settings.illu_mode == Plane
-                reconstruct_plane_hologram!(res_obj, data, holo_params, settings, Nz; ref=ref, translation_px=nothing)
+                reconstruct_plane_hologram!(res_obj, data, holo_params, settings, Nz, lam; ref=ref)
                 return res_obj, 0.0,phase_offsets
             else
                 reconstruct_speckle_hologram!(res_obj, res_illu, data, holo_params, settings, Nz, rec_field_illu_ft; ref=ref, translation_px=nothing)

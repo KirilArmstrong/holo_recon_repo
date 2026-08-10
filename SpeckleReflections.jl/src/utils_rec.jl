@@ -48,18 +48,14 @@ struct ImageSettings
 end
 """
 struct ImageSettings
-   lam::Float64            # wavelength [um]
+   lam::Vector{Float64}          # wavelength [um]
    n::Float64        # refractive Index of medium
    NA_illu::Float64
    NA_det::Float64
-   k_ref::NTuple{2, Float64} # position of the reference wave in Fourier space in relative frequencies border is (0.5, 0.5)
    mag::Int                # Magnification of the Objective
    samp::NTuple{3, Float64} # Camera-Pixelsize um on sampel
-   ref_plane::Int            # Index of the plane of the 3D set where the 2D data was recorded
    illu_mode::Type       # Mode of illumination (e.g. Speckle)
    nbr_cam_pixels::NTuple{2, Int}
-   # Npx::NTuple{2, Int}     # Nbr of pixels in x and y on Camera
-   # Nimags::Int             # Nbr. of images recorded
 end
 
 # A function to only collect non-basic array types. To ensure that CuArrays are Not removed from the GPU!
@@ -80,37 +76,26 @@ Parameters:
 - holo_params: collection of parameters used for the reconstruction. See `get_holo_params`.
 - settings:  see `get_settings` and `get_settings_meas`
 """
-function reconstruct_speckle_hologram!(calib_trans, calib_illu, data::AbstractArray, holo_params::HoloParams, settings::ImageSettings, Nz, rec_field_illu_ft=nothing; translation_px=nothing, ref=nothing, NA = 0.9)
+function reconstruct_speckle_hologram!(calib_trans, calib_illu, data::AbstractArray, holo_params::HoloParams, settings::ImageSettings, Nz, lam, rec_field_illu_ft=nothing; translation_px=nothing, ref=nothing)
 
    # 2. reconstruct single-plane off-axis Hologramm
-   # rec_field_obj_ft = (eltype(data) <: Complex) ? data : opt_collect(isnothing(ref) ? rec_holo_cut(data, holo_params, size(data)) : rec_holo_shift(data, holo_params, ref))
    rec_field_obj_ft = (eltype(data) <: Complex) ? data : opt_collect(rec_holo_shift(data, holo_params, ref))
-
-   # rec_field_obj = opt_collect(rec_field_obj)
-   # rec_field_propagator = propagate_field_3d_r(rec_field_obj, settings.lam, settings.samp; pad_factor = 1, Nz=length(prop_dist))
 
    new_sampling = ((settings.samp[1:2] .* size(data)[1:2] ./ size(rec_field_obj_ft)[1:2])..., settings.samp[3])
 
    PType = complex_arr_type(typeof(expand_dims(rec_field_obj_ft, Val(3))))
-   propagator = propagator_col(PType, (size(rec_field_obj_ft)[1:2]..., Nz), new_sampling, settings.lam; ref_idx = settings.ref_plane)
+   propagator = propagator_col(PType, (size(rec_field_obj_ft)[1:2]..., Nz), new_sampling, lam; ref_idx = settings.ref_plane)
 
-   aperture = get_propagator_mask_3d(rec_field_obj_ft, settings.lam, new_sampling[1:2], NA)
+   aperture = get_propagator_mask_3d(rec_field_obj_ft, lam, new_sampling[1:2], settings.NA_det)
 
    rec_field_obj_prop = ift2d(rec_field_obj_ft .* conj.(propagator .* aperture));
 
    rec_field_illu_ft = select_region_view(rec_field_illu_ft, size(rec_field_obj_ft))
    rec_field_illu_prop = ift2d(rec_field_illu_ft .* opt_collect(propagator .* aperture));
-   # @vtp rec_field_obj_prop[:,:,1]
-   # @vtp rec_field_illu_prop[:,:,1]
-
-   # rec_field_illu_prop = (prop_dist == 0 || isnothing(rec_field_illu)) ? filter_field(rec_field_illu, settings) :  propagate_field_3d_r(rec_field_illu, settings.lam, settings.samp; ref_idx = settings.ref_plane, Nz=length(prop_dist))
-   # rec_field_obj_prop = (prop_dist == 0) ? filter_field(rec_field_obj, settings) :  propagate_field_3d_r(rec_field_obj, settings.lam, settings.samp; ref_idx = settings.ref_plane, Nz=length(prop_dist))
-
+  
    # 4. upsample results
-   nsz = size(calib_trans) #size(rec_field_obj_prop)[2].*(holo_params.pad_fac, holo_params.pad_fac)
-   # if (ndims(rec_field_obj_prop) > 2)
-   #    nsz = (nsz..., size(rec_field_obj_prop)[3])
-   # end
+   nsz = size(calib_trans)
+
    rec_field_illu_prop = (holo_params.pad_fac > 0 && !isnothing(rec_field_illu_prop)) ? resample(opt_collect(rec_field_illu_prop), nsz) : rec_field_illu_prop
 
    rec_field_obj_prop = (holo_params.pad_fac > 0 && !isnothing(rec_field_obj_prop)) ? resample(opt_collect(rec_field_obj_prop), nsz) : rec_field_obj_prop
@@ -129,7 +114,7 @@ function reconstruct_speckle_hologram!(calib_trans, calib_illu, data::AbstractAr
    return  calib_trans, calib_illu # convert(Array{ComplexF64}, SD_calib_trans)
 end
 
-function reconstruct_plane_hologram!(calib_trans, data::AbstractArray, holo_params::HoloParams, settings::ImageSettings, Nz; translation_px=nothing, ref=nothing, NA = 0.9)
+function reconstruct_plane_hologram!(calib_trans, data::AbstractArray, holo_params::HoloParams, settings::ImageSettings, Nz, lam; translation_px=nothing, ref=nothing)
    rec_field_obj_ft = (eltype(data) <: Complex) ? data : opt_collect(rec_holo_shift(data, holo_params, ref))
 
    # rec_field_obj = opt_collect(rec_field_obj)
@@ -138,9 +123,9 @@ function reconstruct_plane_hologram!(calib_trans, data::AbstractArray, holo_para
    new_sampling = ((settings.samp[1:2] .* size(data)[1:2] ./ size(rec_field_obj_ft)[1:2])..., settings.samp[3])
 
    PType = complex_arr_type(typeof(expand_dims(rec_field_obj_ft, Val(3))))
-   propagator = propagator_col(PType, (size(rec_field_obj_ft)[1:2]..., Nz), new_sampling, settings.lam; ref_idx = settings.ref_plane)
+   propagator = propagator_col(PType, (size(rec_field_obj_ft)[1:2]..., Nz), new_sampling, lam; ref_idx = 1)
 
-   aperture = get_propagator_mask_3d(rec_field_obj_ft, settings.lam, new_sampling[1:2], NA)
+   aperture = get_propagator_mask_3d(rec_field_obj_ft, lam, new_sampling[1:2], settings.NA_det)
 
    rec_field_obj_prop = ift2d(rec_field_obj_ft .* conj.(propagator .* aperture));
 
@@ -195,23 +180,23 @@ get_settings()
 Method that defines the parameters which were used in the setup with which the Images were captured.
 Should be adaptet in the future to read those out of a file.
 """
-function get_settings(;lam=0.5, n=1.0, NA_illu=0.9, NA_det=0.9, k_ref=(0.3, -0.3),  mag=46, ref_plane=1, samp_z = 0.1, samp = (2.5/mag, 2.5/mag, samp_z), illu_mode=Speckle, nbr_cam_pixels=(5120, 5120))
+function get_settings(;lam, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 0.1, samp = (3.9/mag, 3.9/mag, samp_z), illu_mode=Plane, nbr_cam_pixels=(4704, 3424))
     # To DO: store parameters in file which is automatically generated when measurements are saved
     # settings for simulation
-    settings = ImageSettings(lam, n, NA_illu, NA_det, k_ref, mag, samp, ref_plane, illu_mode, nbr_cam_pixels)
+    settings = ImageSettings(lam, n, NA_illu, NA_det, mag, samp, illu_mode, nbr_cam_pixels)
     return settings
 end
 
-function get_settings(settings;lam=settings.lam, n=settings.n, NA_illu=settings.NA_illu, NA_det=settings.NA_det, k_ref=settings.k_ref, mag=settings.mag, ref_plane=1, samp = settings.samp, illu_mode=settings.illu_mode, nbr_cam_pixels=settings.nbr_cam_pixels)
+function get_settings(settings;lam=settings.lam, n=settings.n, NA_illu=settings.NA_illu, NA_det=settings.NA_det, mag=settings.mag, samp = settings.samp, illu_mode=settings.illu_mode, nbr_cam_pixels=settings.nbr_cam_pixels)
     # To DO: store parameters in file which is automatically generated when measurements are saved
     # settings for simulation
-    return ImageSettings(lam, n, NA_illu, NA_det, k_ref, mag, samp, ref_plane, illu_mode, nbr_cam_pixels)
+    return ImageSettings(lam, n, NA_illu, NA_det, mag, samp, illu_mode, nbr_cam_pixels)
 end
 
-function get_settings_meas(;lam=0.488, n=1.52, NA_illu=1.3, NA_det=1.3, k_ref=(0.3, -0.3), samp_z=0.5, mag=40, ref_plane=1, samp = (2.5/mag, 2.5/mag, samp_z), illu_mode=Speckle, nbr_cam_pixels=(5120, 5120))
+function get_settings_meas(;lam, n=1.0, NA_illu=0.16, NA_det=0.16, samp_z=0.5, mag=5, samp = (2.5/mag, 2.5/mag, samp_z), illu_mode=Speckle, nbr_cam_pixels=(5120, 5120))
     # To DO: store parameters in file which is automatically generated when measurements are saved
     # settings for measurements
-    return get_settings(;lam=lam, n=n, NA_illu=NA_illu, NA_det=NA_det, k_ref=k_ref, samp=samp, samp_z=samp_z, mag=mag, ref_plane=ref_plane, illu_mode=illu_mode, nbr_cam_pixels=nbr_cam_pixels)
+    return get_settings(;lam, n=n, NA_illu=NA_illu, NA_det=NA_det, samp=samp, samp_z=samp_z, mag=mag, illu_mode=illu_mode, nbr_cam_pixels=nbr_cam_pixels)
 end
 
 """
