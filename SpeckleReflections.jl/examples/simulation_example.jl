@@ -95,26 +95,8 @@ function simulate_and_reconstruct()
    abs_pos_end = 109.6;
    abs_pos = LinRange(abs_pos_start, abs_pos_end, length(data_all));
    
-   # define size of result
-   pad_fac = 2;
-   holo_params = SpeckleReflections.get_holo_params(size(data_all[1]), pad_fac; pup_dia=pup_dia)
-   final_size = (holo_params.preserve_size) ? size(data_all[1]) : pup_dia .* holo_params.pad_fac # holo_params.pad_size
-   res_obj = similar(complex(data_all[1]), (final_size[1], final_size[2], Nz))
-   res_stack = similar(complex(data_all[1]), (final_size[1], final_size[2], length(data_all)))
-   res_stack_prop = similar(complex(data_all[1]), (final_size[1], final_size[2], length(data_all)));
-   # loop over wavlength
-   for idx in range(1, length(data_all))
-      # define ref wave
-      k_ref = get_rel_ref(size(data_all[idx]), (abs_pos[idx], abs_pos[idx]))
-      ref = gen_ref(data_all[idx], k_ref)
-      SpeckleReflections.reconstruct_plane_hologram!(res_obj, data_all[idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref)
-      res_stack[:,:,idx] = res_obj[:,:,1];
-      res_stack_prop[:,:,idx] = res_obj[:,:,2];
-   end
-
-   rec_vol = SpeckleReflections.ift(res_stack,3);
-   res_vol_prop = SpeckleReflections.ift(res_stack_prop,3);
-   @vt abs.(rec_vol) abs.(res_vol_prop)
+   rec_obj_prop = SpeckleReflections.main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos; do_prop=true)
+   @vt abs.(rec_obj) abs.(rec_obj_prop)
                                                               
    
    
