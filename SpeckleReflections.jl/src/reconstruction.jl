@@ -8,29 +8,46 @@
 +  `illu_all`:  Vector of either real space data or pre-extracted holograms
 
 """
-function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos; do_prop=false)
+function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos; do_prop=false, roi=nothing, preserve_size=false, do_oct=true)
     # define size of result
-    pad_fac = 2;
+    pad_fac = 1;
     Nz = 2 # propagation does nott work with Nz = 1!!!
-    holo_params = get_holo_params(size(data_all[1]), pad_fac; pup_dia=pup_dia)
-    final_size = (holo_params.preserve_size) ? size(data_all[1]) : pup_dia .* holo_params.pad_fac # holo_params.pad_size
-    res_obj = similar(complex(data_all[1]), (final_size[1], final_size[2], Nz))
-    res_stack = similar(complex(data_all[1]), (final_size[1], final_size[2], length(data_all)))
+    holo_params = get_holo_params(size(data_all[1])[1:2], pad_fac; pup_dia=pup_dia, preserve_size=preserve_size)
+    final_size = (holo_params.preserve_size) ? size(data_all[1])[1:2] : pup_dia .* holo_params.pad_fac # holo_params.pad_size
+    if isnothing(roi)
+        roi = [1:final_size[1], 1:final_size[2]];
+    end
+
+    res_obj = zeros(Float32, final_size[1], final_size[2], Nz);
+    res_obj = cu(complex(res_obj));
+    res_stack = zeros(Float32, length(roi[1]), length(roi[2]), length(settings.lam));
+    res_stack = cu(complex(res_stack))
+    println(typeof(res_stack))
+    #res_obj = similar(complex(data_all[1]), (final_size[1], final_size[2], Nz))
+    #res_stack = similar(complex(data_all[1]), (length(roi[1]), length(roi[2]), length(settings.lam)))
     # loop over wavlength
-    for idx in range(1, length(data_all))
+    for idx in range(1, length(settings.lam))
         # define ref wave
-        k_ref = get_rel_ref(size(data_all[idx]), (abs_pos[idx], abs_pos[idx]))
-        ref = gen_ref(data_all[idx], k_ref)
-        reconstruct_plane_hologram!(res_obj, data_all[idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref)
+        k_ref = get_rel_ref(size(data_all[1][:,:,idx]), (abs_pos[idx,2], abs_pos[idx,1]))
+        ref = gen_ref(data_all[1][:,:,idx], k_ref)
+        reconstruct_plane_hologram!(res_obj, data_all[1][:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref) # result is in pupil plane!
         if do_prop
-            res_stack[:,:,idx] = res_obj[:,:,2];
+            res_stack[:,:,idx] .= res_obj[roi[1],roi[2],2];
         else
-            res_stack[:,:,idx] = res_obj[:,:,1];
+            res_stack[:,:,idx] .= res_obj[roi[1],roi[2],1];
         end
     end
 
-    return ift(res_stack,3)
+    if do_oct
+        res_pad = select_region(res_stack, (size(res_stack)[1:2]...,size(res_stack)[3]*2))
+        return ft2d(ift(res_pad,3))
+    else
+        return res_stack
+    end
 end
+
+#     return ift(res_stack,3)
+# end
 
 # function main_reconstruction(data_all, illu_all, settings, Nz, lam;   
 #                              pup_dia=size(data_all[1])[1:2], find_phases=true, phase_method="ABS", phase_iterations=1, 

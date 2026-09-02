@@ -1,5 +1,5 @@
-using CUDA
 using SpeckleReflections
+using CUDA
 using SyntheticObjects
 using View5D
 using Statistics
@@ -21,9 +21,9 @@ end
 
 function simulate_and_reconstruct()
    sz = (501,501,51)
-   k_vec = LinRange(2*π/0.805, 2*π/0.885, 100);
+   k_vec = LinRange(2*π/0.805, 2*π/0.885, 400);
    lam_vec=2*π./k_vec;
-   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
+   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 10.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
    num_photons = 100
    if (true)
       obj = generate_object_3d(type="Discs"; settings.samp, res_dist=0, size_xyz=sz, dz=50);
@@ -41,7 +41,7 @@ function simulate_and_reconstruct()
         obj = cu(obj);
    end
 
-   @time data_all, illu_all, phase_offset = do_simulation(obj, settings; random_phases=random_phases, reclaim_fct=my_reclaim, num_photons = num_photons); #   34 sec, 4 Gb GPU, 100 imgs, 301x301x50
+   @time data_all, illu_all, phase_offset = do_simulation(obj, settings; random_phases=random_phases, reclaim_fct=my_reclaim, num_photons = 0); #   34 sec, 4 Gb GPU, 100 imgs, 301x301x50
    GC.gc()
    CUDA.reclaim()
 
@@ -54,12 +54,12 @@ function simulate_and_reconstruct()
 
    use_cuda = true
    if (false) # paste if the code before was not run
-      folder = raw"../../simulations/plane_discs/";
-      name_simu = "plane_discs";
+      folder = raw"../../simulations/";
+      name_simu = "test_sim_discs";
    end
 
    preprocess_fct = nothing;
-   slice_arr = load_data(folder*name_simu*".h5"; range=1:1)[1];
+   slice_arr = load_data(folder*name_simu*".h5"; range=1:1)[1][:,:,1];
    pup_dia=(52,52);
    #@vt abs.(SpeckleReflections.ft2d(slice_arr))
    if (false)  # If you use this less memory should be consumed.
@@ -87,16 +87,17 @@ function simulate_and_reconstruct()
       illu_all = cu.(illu_all);
    end;
  
-   Nz = 2; # how many slices to reconstruct
-   settings = get_settings(settings; samp=(settings.samp[1], settings.samp[2],-100.0))
+   settings = get_settings(settings; samp=(settings.samp[1], settings.samp[2],-500.0))
    # define position of 1. orders
    # @vt abs.(SpeckleReflections.ft2d(data_all[1])) abs.(SpeckleReflections.ft2d(data_all[end]))
-   abs_pos_start = 95.5;
-   abs_pos_end = 109.6;
-   abs_pos = LinRange(abs_pos_start, abs_pos_end, length(data_all));
+   abs_pos_start = (95.5, 95.5);
+   abs_pos_end = (109.6, 109.6);
+   abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_all[1],3));
+   abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_all[1],3));
+   abs_pos = cat(abs_pos_x, abs_pos_y, dims=2)
    
-   rec_obj_prop = SpeckleReflections.main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos; do_prop=true)
-   @vt abs.(rec_obj) abs.(rec_obj_prop)
+   rec_obj_prop = SpeckleReflections.main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos; do_prop=true, do_oct=true)
+   @vt abs.(rec_obj_prop)
                                                               
    
    

@@ -12,8 +12,8 @@ function do_simulation(obj, settings;
    phase_offset = 0 #zeros(Nlam)
    phase_offset = (random_phases) ? rand(-pi:pi) : 0.0; # this line needs to be changed??
 
-   data_all = [];
-   illu_all = [];
+   data_all = zeros((size(obj)[1:2]...,Nlam));
+   illu_all = similar(data_all);
 
    fna = 3 .*[-settings.NA_det, settings.NA_det]; # tilt diagonal -> into settings?
    k_ref = fna[1].*settings.samp[1].*settings.n./settings.lam # vector of k_refs
@@ -45,8 +45,8 @@ function do_simulation(obj, settings;
 
       holo_obj = normalize_intensity(abs2.((obj_L2 .* exp(1im*phase_offset)) .+ ref));
       holo_illu = normalize_intensity(abs2.(illu_L2 .+ ref)); # take first layer of speckle
-      push!(data_all, Array(holo_obj[:,:,1]))
-      push!(illu_all, Array(holo_illu[:,:,1]))
+      data_all[:,:,lam_num] .= Array(holo_obj[:,:,1])
+      illu_all[:,:,lam_num] .=  Array(holo_illu[:,:,1])
       # push!(ref_all, Array(ref))
 
       if (mod(lam_num, gc_period) == 0)
@@ -59,7 +59,7 @@ function do_simulation(obj, settings;
       illu_all = apply_noise.(illu_all, num_photons)
    end
 
-   return data_all, illu_all, phase_offset # ref_all, 
+   return [data_all], [illu_all], [phase_offset] # ref_all, 
 end
 
 function apply_noise(data, n_photons=1000)

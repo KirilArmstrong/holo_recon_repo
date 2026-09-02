@@ -222,194 +222,87 @@ function reconstruct_measured_data()
    ##--- define files and sizes ----------------------------------------------
    # define folders and filenames
    folder = raw"/home/zomamstu/measurements_temp//"
-   file_sample = folder * "wurstvergiftung_100_1um_6079.1um.h5"
-   file_illu = folder * "mirrorDG1_4562.8um.h5"
-   file_trans_mat = file_sample[1:end-3] * "_translations.h5"
+   file_sample = folder * "image_discrete_steps_newobj.h5"
+   # file_illu = folder * "mirrorDG1_4562.8um.h5"
+   # file_trans_mat = file_sample[1:end-3] * "_translations.h5"
 
    ##--- define reagion of interest and get sizes ----------------------------------------------
-   data_raw = load_data(file_sample, range=1:1)
-   ct = (2560, 2560)#(1280, 2560) #(2800÷2, 3000)#(1780, 2800) #Int.(size(data[1])./2)
-   rad = (1280, 1280)#(1400, 1400)#(1780, 1780) #Int.(size(data[1])./4)
+   data_raw = load_data(file_sample)
+   ct = size(data_raw[1])[1:2] .÷2; # [2460, 1840]
+   rad = [1374, 1000];
    roi = [ct[1]-rad[1]+1:ct[1]+rad[1], ct[2]-rad[2]+1:ct[2]+rad[2]]
-   aslice = data_raw[1];
-   # @vt aslice[roi[1], roi[2]]
+   # @vt data_raw[1][roi[1], roi[2],1]
    
-   # @vr sqrt.(abs.(SpeckleReflections.ft2d(aslice[roi...])))
-   abs_pos = Tuple(round.(Int, (4350, 940).*length.(roi)./size(data_raw[1])));
-   pup_dia = Tuple(round.(Int, (1140, 1140).*length.(roi)./size(data_raw[1])));
-   raw_sz = length.(Tuple(roi))
-   k_ref = get_rel_ref(raw_sz, abs_pos) # (0.3761598857958601, -0.004282655246252677)
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,1];)))
+   abs_pos_start = Tuple(round.(Int, (880, 790).*length.(roi)./size(data_raw[1])[1:2]));
+   pup_dia = Tuple(round.(Int, (1500, 1100).*length.(roi)./size(data_raw[1])[1:2]));
+   # FT1 = SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],1])[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
+   # rec1 = SpeckleReflections.ift2d(FT1)
+   # @vtp rec1
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],1])))[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,end];)))
+   abs_pos_end = Tuple(round.(Int, (995, 880).*length.(roi)./size(data_raw[1])[1:2]));
+   # FT1 = SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
+   # rec1 = SpeckleReflections.ift2d(FT1)
+   # @vtp rec1
+     
+ # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])))[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
+   abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
+   abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
+   abs_pos = cat(abs_pos_x, abs_pos_y, dims=2)
+   
+   #raw_sz = length.(Tuple(roi))
+   #k_ref = get_rel_ref(raw_sz, abs_pos) # (0.3761598857958601, -0.004282655246252677)
 
-   pad_factor = 2
-   holo_params = get_holo_params(raw_sz, pad_factor; pup_dia=pup_dia)
-   settings = get_settings_meas(mag=63, k_ref=k_ref, NA_det=1.4, NA_illu=1.4, illu_mode=SpeckleReflections.Speckle)
-   ref = gen_ref(aslice[roi...], settings)
-
-   @vr sqrt.(abs.(SpeckleReflections.ft2d(aslice[roi...])))[abs_pos[1]-pup_dia[1]÷2:abs_pos[1]+pup_dia[1]÷2,abs_pos[2]-pup_dia[2]÷2:abs_pos[2]+pup_dia[2]÷2]
-
-   ##--- find shifts (only needs to be done once) ----------------------------------------------
-   # since this is a huge code block it was put in a function.
-   # However, the naming was untouched so code can be sent manualy to the REPL from within the function
-   if (false)
-      # MA approach
-      shifts2, shifts_theo = get_translations_main_ma(file_sample, file_illu, 1.0, settings; abs_pos=abs_pos, pup_dia=pup_dia, roi=roi, bkg_sub=true, max_freq=1.0)
-      plt = plot_shifts(shifts2, shifts_theo)
-      
-      savefig(plt,folder*"translations_pic5_bkg_sub.png")   
-      save_translations(shifts2, file_sample[1:end-3]*"_bkg_sub")
-
-      # RH approach
-      data = load_data(file_sample)
-      data_illu = similar(data)
-      data_illu .= load_data(file_illu);
-      shifts_rh, aligned_rh = get_translations_main_rh(data, data_illu, settings; red_dim=3, reg=1.0, pup_dia=nothing)
-      @vr abs.(sum(aligned_rh, dims=3))
-
-   end
-
-   ##--- find axial shifts (only needs to be done once) ----------------------------------------------
-   # during the lateral movements of the sampel axial shifts are introduced to each measurement
-   # The following block tries to find said shifts (not optimized), which then can be used as a pre-propagation to the illumination/calibration field
-   if (false)
-      data = load_data(file_sample, roi, range= 1:100)
-      data_illu = similar(data)
-      data_illu .= load_data(file_illu, roi, range=1:1);
-      shifts2 = load_data(file_trans_mat, range=1:100) # read in hologramm of illumination holo
-      # shift data to maximise possible roi
-      data .= SpeckleReflections.shift.(data,  shifts2);
-      data_illu .= SpeckleReflections.shift.(Ref(data_illu[1]), shifts2);
-
-      roi_z = [2040:2240,700:900] # Define a region where there is always a reflective surface
-      @vt data[100][roi_z[1], roi_z[2]] data_illu[100][roi_z[1], roi_z[2]]
-
-      holo_params2 = get_holo_params(raw_sz, pad_factor; pup_dia=pup_dia, preserve_size=true)
-      prop_init = 0.0
-      dz = -0.025
-      NZ = 30
-      z_shifts_neg, corr_val_neg = find_axial_shift(data_illu, data, settings,holo_params2, NZ, dz; roi=roi_z, prop_init=prop_init)
-
-      v = range(0.0, stop = (NZ-1) * dz, length = (NZ-1)) |> collect 
-      z_vals = repeat([v], length(data))
-      labels = range(1, length(data_illu), length=length(data_illu))
-      plt = plot(z_vals[1], corr_val_pos[1], label=string(labels[1]))
-      for idx in 2:100
-         plot!(z_vals[idx], corr_val_pos[idx]) # label=string(labels[idx])
-      end
-      title!("Correlation of propagated illu.-field to obj.-field")
-      xlabel!("prop. dist.[um]")
-      ylabel!("Corr. value [-]")
-
-      savefig(plt,folder*"corr_vals_pos_z.png")
-
-      z_shifts_plt = []
-      for idx in range(1,length(z_shifts_pos))
-         append!(z_shifts_plt,z_shifts_pos[idx][1])
-      end
-      plt = plot(z_shifts_plt, title="Z-offset of 1. sampel pos to each other sampel pos.", label="prop. distance", xlabel="Pos. Nr.[-]", ylabel="prop. distance [um]")
-      
-      savefig(plt,folder*"Pos_axial_offsets_in_z_sample_to_mirror_M100.png")
- 
-      # save shifts in file
-      h5open(folder*"z_shifts_mirror.h5", "w") do file
-         for idx in eachindex(z_shifts_neg)
-            write(file, string(idx), [z_shifts_neg[idx]...])
-         end
-      end
-   end
-
-   ##--- read in data and shifts and preprocess data ----------------------------------------------
-   data = load_data(file_sample, roi, range=1:100)   
-   data_illu = similar(data)
-   data_illu .= load_data(file_sample, roi, range=1:1)
-   #file_trans_mat = file_sample[1:end-3] * "_translations_bkg_sub.h5"
-   shifts2 = load_data(folder*"trans_values_extracted.h5", range=1:100) # read in hologramm of illumination holo
-   # z_shifts = load_data(folder*"z_shifts_mirror.h5")
-   ref = gen_ref(data[1], settings)  
-   # to load the data we need to apply shifts in real space and extract the hologram
-   # This can be achieved by a preprocessing function applying a phase ramp in Fourier space
-   # and extracting the hologram
-   if (false)  # If you use this less memory should be consumed.
-      function preprocess_fct(dat, myshift)
-         return rec_holo_shift(dat, holo_params, ref, myshift)
-      end
-      doscale(vec, scale) = vec .* [scale..., 1]
-      scaled_shifts = doscale.(shifts2, Ref(raw_sz ./ size(data[1])))
-      data_pr = preprocess_fct.(data, scaled_shifts);
-      data_illu_pr = preprocess_fct.(data_illu, scaled_shifts);
-
-      nsz = (size(data_pr[1]).*(holo_params.pad_fac, holo_params.pad_fac)..., length(data_pr))
-      ave_img = zeros(nsz[1:2])
-      ave_illu = zeros(nsz[1:2])
-      for img_num in range(1, length(data_pr))
-         ave_img .+= abs.(SpeckleReflections.resample(collect(SpeckleReflections.ift2d(data_pr[img_num])), nsz[1:2]));
-         ave_illu .+= abs.(SpeckleReflections.resample(collect(SpeckleReflections.ift2d(data_illu_pr[img_num])), nsz[1:2]));
-      end
-      @vt ave_img./ave_illu
-
-      # do pre propagation of illumination field if mirror/sampel was imaged out of focus
-      data_illu_prop = similar(data_illu_pr)
-      # mean_shift = sum(z_shifts)/length(z_shifts)
-      new_samp_xy = ((settings.samp[1:2] .* size(data[1]) ./ size(data_pr[1])[1:2]))
-      for img_num in range(1, length(data_illu_pr))
-         Nz = 2
-         prop_sampling = (new_samp_xy..., 2.5)
-         PType = SpeckleReflections.complex_arr_type(typeof(SpeckleReflections.expand_dims(data_illu_pr[1], Val(3))))
-         propagator = SpeckleReflections.propagator_col(PType, (size(data_illu_pr[1])[1:2]..., Nz), Float32.(prop_sampling), settings.lam; ref_idx = 1)
-         aperture = SpeckleReflections.get_propagator_mask_3d(data_illu_pr[img_num], settings.lam, prop_sampling[1:2], settings.NA_det)
-         data_illu_prop[img_num] =  data_illu_pr[img_num] .* conj.(propagator[:,:,2] .* aperture)
-      end
-   else
-      # shift, cut and then preprocess data
-      function preprocess(dat)
-         return rec_holo_shift(dat, holo_params, ref)
-      end
-      new_sz = size(data[1]).-470
-      new_cent = new_sz .÷2
-      data = SpeckleReflections.select_region.(SpeckleReflections.shift.(data,  shifts2); new_size=new_sz, center=new_cent);
-      data_illu = SpeckleReflections.select_region.(SpeckleReflections.shift.(data_illu, shifts2); new_size=new_sz, center=new_cent);
-      holo_params = get_holo_params(size(data[1]), pad_factor; pup_dia=pup_dia)
-      ref = gen_ref(data[1], settings) 
-      data_cr = preprocess.(data)
-      data_illu_cr = preprocess.(data_illu)
-   end
-
-   ##--- reconstruct on CPU ----------------------------------------------
-   # @time rec_obj, phase_offsets_found = main_reconstruction(data, data_illu, settings, Nz; 
-   #                                                                 phase_iterations=1);
+   #pad_factor = 2
+   #holo_params = get_holo_params(raw_sz, pad_factor; pup_dia=pup_dia)
+   hdf5obj = h5open(file_sample)
+   lam_str = attrs(hdf5obj["1"])["lambdas"]
+   lam_vec = parse.(Float32, split(strip(lam_str, ['[', ']'])))./1000;
+   #k_vec=2*π./lam_vec;
+   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
 
    ##--- reconstruct on GPU using CUDA ----------------------------------------------
-   datac = cu.(data_pr);
-   illuc = cu.(data_illu_pr);
+   #data_raw = load_data(file_sample, [roi...,:])
+   datac = [cu(data_raw[1][roi[1], roi[2], :])];
+   # illuc = cu.(data_illu_pr);
    GC.gc();
    CUDA.reclaim();
 
-   # @time rec_obj, phase_offsets_found = main_reconstruction(data, data_illu, settings, Nz; phase_iterations=1);   
-   # GC.gc()
-   # CUDA.reclaim()
-
    # calculate new sampling due to cropping out first order during preprocessing
-   new_sampling = ((settings.samp[1:2] .* size(data[1]) ./ size(datac[1])[1:2])..., 0.125)
+   new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., -1000.0)
    # define new settings with new sampling
    # ref_plane defines the index in the resulting stack where the propagation is 0
-   settings_new = get_settings(settings, samp=new_sampling, ref_plane=21)
-   Nz = 41 # Nz defines how many depth slices shall be reconstructed
-   @time rec_obj, pca_mask, rec_illu = main_reconstruction(datac, illuc, settings_new, Nz; find_phases=true, phase_method = "ABS",
-                                                            phase_iterations=1, gc_period=5, reclaim_fct=my_reclaim,
-                                                            pup_dia=pup_dia, calib_mode=CalibDivide, calib_sum=true,
-                                                            holo_params=holo_params);
-
+   settings_new = get_settings(settings, samp=new_sampling, lam=lam_vec)
+   final_sz = size(datac[1])[1:2]
+   res_roi = [1:final_sz[1], 1300-1:1300]
    
+   rec_obj_prop = SpeckleReflections.main_reconstruction_holoscopy(datac, settings_new, pup_dia, abs_pos; do_prop=true, roi=nothing, preserve_size=false, do_oct=false)
+   GC.gc();
+   CUDA.reclaim();
+   rec_obj_prop_abs = SpeckleReflections.ft2d(abs.(SpeckleReflections.ift2d(rec_obj_prop)));
+   rec_obj_abs = SpeckleReflections.ft2d(abs.(SpeckleReflections.ift2d(rec_obj)));
+
+   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj_prop, 3)))
+   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj, 3)))
+   
+   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj_prop_abs, 3)))
+   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj_abs, 3)))
+
+   @vt abs.(SpeckleReflections.ift(real.(SpeckleReflections.ift2d(rec_obj)), 3))
+
    # show result
-   @vt abs.(collect(rec_obj))./ abs.(collect(rec_illu)) 
-   @vt abs.(collect(rec_obj_theo))./abs.(collect(rec_illu_theo))
+   @vt abs.(rec_obj) abs.(rec_obj_prop)
+   @vtp rec_obj rec_obj_prop
+   sd_rec_obj = SpeckleReflections.ift(collect(rec_obj),3);
+   sd_rec_obj_prop = SpeckleReflections.ift(rec_obj_prop,3);
 
+   plot(abs.(collect(rec_obj[2050,2,:])))
+   plot!(abs.(collect(rec_obj_prop[2050,2,:])))
+   
+   plot(abs.(collect(sd_rec_obj[2050,2,:])))
+   plot!(abs.(collect(sd_rec_obj_prop[2050,2,:])))
 
-   # stitch result
-   obj_comb_x1 = cat(rec_obj_1[1:622, :, :], rec_obj_2[1:622, :, :], rec_obj_3[1:622, :, :], dims=1)
-   obj_comb_x2 = cat(rec_obj_4[1:622, :, :], rec_obj_5[1:622, :, :], rec_obj_6[1:622, :, :], dims=1)
-   obj_comb_y = cat(obj_comb_x1[:, 1:495, :], obj_comb_x2[:,1:495,:], dims=2)
-   @vt abs.(obj_comb_y)
-  
    # save result
    save_data(folder, "rec_tissue2", collect(rec_obj),".h5")
 
@@ -417,5 +310,136 @@ function reconstruct_measured_data()
    save_obj = ave_img_theo[359:559,624:824]./ave_illu_theo[359:559,624:824]
    @vt save_obj
    save(folder*"incoherent_sum_zoomed_pic1_theo.png",(save_obj.-minimum(save_obj))./(maximum(save_obj.-minimum(save_obj))))
+
+
+
+   ##--- find shifts (only needs to be done once) ----------------------------------------------
+   # since this is a huge code block it was put in a function.
+   # However, the naming was untouched so code can be sent manualy to the REPL from within the function
+   # if (false)
+   #    # MA approach
+   #    shifts2, shifts_theo = get_translations_main_ma(file_sample, file_illu, 1.0, settings; abs_pos=abs_pos, pup_dia=pup_dia, roi=roi, bkg_sub=true, max_freq=1.0)
+   #    plt = plot_shifts(shifts2, shifts_theo)
+      
+   #    savefig(plt,folder*"translations_pic5_bkg_sub.png")   
+   #    save_translations(shifts2, file_sample[1:end-3]*"_bkg_sub")
+
+   #    # RH approach
+   #    data = load_data(file_sample)
+   #    data_illu = similar(data)
+   #    data_illu .= load_data(file_illu);
+   #    shifts_rh, aligned_rh = get_translations_main_rh(data, data_illu, settings; red_dim=3, reg=1.0, pup_dia=nothing)
+   #    @vr abs.(sum(aligned_rh, dims=3))
+
+   # end
+
+   # ##--- find axial shifts (only needs to be done once) ----------------------------------------------
+   # # during the lateral movements of the sampel axial shifts are introduced to each measurement
+   # # The following block tries to find said shifts (not optimized), which then can be used as a pre-propagation to the illumination/calibration field
+   # if (false)
+   #    data = load_data(file_sample, roi, range= 1:100)
+   #    data_illu = similar(data)
+   #    data_illu .= load_data(file_illu, roi, range=1:1);
+   #    shifts2 = load_data(file_trans_mat, range=1:100) # read in hologramm of illumination holo
+   #    # shift data to maximise possible roi
+   #    data .= SpeckleReflections.shift.(data,  shifts2);
+   #    data_illu .= SpeckleReflections.shift.(Ref(data_illu[1]), shifts2);
+
+   #    roi_z = [2040:2240,700:900] # Define a region where there is always a reflective surface
+   #    @vt data[100][roi_z[1], roi_z[2]] data_illu[100][roi_z[1], roi_z[2]]
+
+   #    holo_params2 = get_holo_params(raw_sz, pad_factor; pup_dia=pup_dia, preserve_size=true)
+   #    prop_init = 0.0
+   #    dz = -0.025
+   #    NZ = 30
+   #    z_shifts_neg, corr_val_neg = find_axial_shift(data_illu, data, settings,holo_params2, NZ, dz; roi=roi_z, prop_init=prop_init)
+
+   #    v = range(0.0, stop = (NZ-1) * dz, length = (NZ-1)) |> collect 
+   #    z_vals = repeat([v], length(data))
+   #    labels = range(1, length(data_illu), length=length(data_illu))
+   #    plt = plot(z_vals[1], corr_val_pos[1], label=string(labels[1]))
+   #    for idx in 2:100
+   #       plot!(z_vals[idx], corr_val_pos[idx]) # label=string(labels[idx])
+   #    end
+   #    title!("Correlation of propagated illu.-field to obj.-field")
+   #    xlabel!("prop. dist.[um]")
+   #    ylabel!("Corr. value [-]")
+
+   #    savefig(plt,folder*"corr_vals_pos_z.png")
+
+   #    z_shifts_plt = []
+   #    for idx in range(1,length(z_shifts_pos))
+   #       append!(z_shifts_plt,z_shifts_pos[idx][1])
+   #    end
+   #    plt = plot(z_shifts_plt, title="Z-offset of 1. sampel pos to each other sampel pos.", label="prop. distance", xlabel="Pos. Nr.[-]", ylabel="prop. distance [um]")
+      
+   #    savefig(plt,folder*"Pos_axial_offsets_in_z_sample_to_mirror_M100.png")
+ 
+   #    # save shifts in file
+   #    h5open(folder*"z_shifts_mirror.h5", "w") do file
+   #       for idx in eachindex(z_shifts_neg)
+   #          write(file, string(idx), [z_shifts_neg[idx]...])
+   #       end
+   #    end
+   # end
+
+   ##--- read in data and shifts and preprocess data ----------------------------------------------
+   # data = load_data(file_sample, [roi...,:])   
+   # data_illu = similar(data)
+   # data_illu .= load_data(file_sample, roi, range=1:1)
+   # shifts2 = load_data(folder*"trans_values_extracted.h5", range=1:100) # read in hologramm of illumination holo
+   # z_shifts = load_data(folder*"z_shifts_mirror.h5")
+   # ref = gen_ref(data[1], settings)  
+   # to load the data we need to apply shifts in real space and extract the hologram
+   # This can be achieved by a preprocessing function applying a phase ramp in Fourier space
+   # and extracting the hologram
+   # if (false)  # If you use this less memory should be consumed.
+   #    function preprocess_fct(dat, myshift)
+   #       return rec_holo_shift(dat, holo_params, ref, myshift)
+   #    end
+   #    doscale(vec, scale) = vec .* [scale..., 1]
+   #    scaled_shifts = doscale.(shifts2, Ref(raw_sz ./ size(data[1])))
+   #    data_pr = preprocess_fct.(data, scaled_shifts);
+   #    data_illu_pr = preprocess_fct.(data_illu, scaled_shifts);
+
+   #    nsz = (size(data_pr[1]).*(holo_params.pad_fac, holo_params.pad_fac)..., length(data_pr))
+   #    ave_img = zeros(nsz[1:2])
+   #    ave_illu = zeros(nsz[1:2])
+   #    for img_num in range(1, length(data_pr))
+   #       ave_img .+= abs.(SpeckleReflections.resample(collect(SpeckleReflections.ift2d(data_pr[img_num])), nsz[1:2]));
+   #       ave_illu .+= abs.(SpeckleReflections.resample(collect(SpeckleReflections.ift2d(data_illu_pr[img_num])), nsz[1:2]));
+   #    end
+   #    @vt ave_img./ave_illu
+
+   #    # do pre propagation of illumination field if mirror/sampel was imaged out of focus
+   #    data_illu_prop = similar(data_illu_pr)
+   #    # mean_shift = sum(z_shifts)/length(z_shifts)
+   #    new_samp_xy = ((settings.samp[1:2] .* size(data[1]) ./ size(data_pr[1])[1:2]))
+   #    for img_num in range(1, length(data_illu_pr))
+   #       Nz = 2
+   #       prop_sampling = (new_samp_xy..., 2.5)
+   #       PType = SpeckleReflections.complex_arr_type(typeof(SpeckleReflections.expand_dims(data_illu_pr[1], Val(3))))
+   #       propagator = SpeckleReflections.propagator_col(PType, (size(data_illu_pr[1])[1:2]..., Nz), Float32.(prop_sampling), settings.lam; ref_idx = 1)
+   #       aperture = SpeckleReflections.get_propagator_mask_3d(data_illu_pr[img_num], settings.lam, prop_sampling[1:2], settings.NA_det)
+   #       data_illu_prop[img_num] =  data_illu_pr[img_num] .* conj.(propagator[:,:,2] .* aperture)
+   #    end
+   # else
+   #    # shift, cut and then preprocess data
+   #    function preprocess(dat)
+   #       return rec_holo_shift(dat, holo_params, ref)
+   #    end
+   #    new_sz = size(data[1]).-470
+   #    new_cent = new_sz .÷2
+   #    data = SpeckleReflections.select_region.(SpeckleReflections.shift.(data,  shifts2); new_size=new_sz, center=new_cent);
+   #    data_illu = SpeckleReflections.select_region.(SpeckleReflections.shift.(data_illu, shifts2); new_size=new_sz, center=new_cent);
+   #    holo_params = get_holo_params(size(data[1]), pad_factor; pup_dia=pup_dia)
+   #    ref = gen_ref(data[1], settings) 
+   #    data_cr = preprocess.(data)
+   #    data_illu_cr = preprocess.(data_illu)
+   # end
+
+   ##--- reconstruct on CPU ----------------------------------------------
+   # @time rec_obj, phase_offsets_found = main_reconstruction(data, data_illu, settings, Nz; 
+   #                                                                 phase_iterations=1);
 
 end

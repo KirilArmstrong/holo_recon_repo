@@ -6,6 +6,7 @@ using SpecialFunctions # for jinc
 using Noise # for poisson noise
 using MultivariateStats # for svd?
 using Random # for rand! in do_simulation
+using CUDA
 
 export get_settings, get_settings_meas
 export do_simulation, apply_noise
