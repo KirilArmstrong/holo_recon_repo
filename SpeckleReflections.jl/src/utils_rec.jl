@@ -127,7 +127,7 @@ function reconstruct_plane_hologram!(calib_trans, data::AbstractArray, holo_para
 
    aperture = get_propagator_mask_3d(rec_field_obj_ft, lam, new_sampling[1:2], settings.NA_det)
 
-   rec_field_obj_prop = rec_field_obj_ft .* conj.(propagator .* aperture); # keep in pupil plane for further oct reconstruction
+   rec_field_obj_prop = ift2d(rec_field_obj_ft .* conj.(propagator .* aperture)); # keep in pupil plane for further oct reconstruction
 
    # 4. upsample results
    nsz = size(calib_trans)#size(rec_field_obj_prop)[2].*(holo_params.pad_fac, holo_params.pad_fac)

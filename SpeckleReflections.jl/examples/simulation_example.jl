@@ -18,15 +18,14 @@ function my_reclaim()
     println("garbage collected, reclaimed CUDA mem.")
 end
 
-
 function simulate_and_reconstruct()
-   sz = (501,501,51)
+   sz = (501,501,107)
    k_vec = LinRange(2*π/0.805, 2*π/0.885, 400);
    lam_vec=2*π./k_vec;
-   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 10.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
+   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
    num_photons = 100
    if (true)
-      obj = generate_object_3d(type="Discs"; settings.samp, res_dist=0, size_xyz=sz, dz=50);
+      obj = generate_object_3d(type="Discs"; settings.samp, res_dist=0, size_xyz=sz, dz=106);
       name_simu = "test_sim_discs";
    else
       obj = filaments3D(sz) 
@@ -53,16 +52,16 @@ function simulate_and_reconstruct()
    #------Reconstruction--Loads the saved data ----------
 
    use_cuda = true
-   if (false) # paste if the code before was not run
+   if (true) # paste if the code before was not run
       folder = raw"../../simulations/";
       name_simu = "test_sim_discs";
    end
 
    preprocess_fct = nothing;
    slice_arr = load_data(folder*name_simu*".h5"; range=1:1)[1][:,:,1];
-   pup_dia=(52,52);
+   pup_dia=(146,146);
    #@vt abs.(SpeckleReflections.ft2d(slice_arr))
-   if (false)  # If you use this less memory should be consumed.
+    if (false)  # If you use this less memory should be consumed.
       pad_factor = 2
       holo_params = get_holo_params(slice_arr, pad_factor; pup_dia=pup_dia)
       ref = gen_ref(slice_arr, settings)
@@ -87,17 +86,18 @@ function simulate_and_reconstruct()
       illu_all = cu.(illu_all);
    end;
  
-   settings = get_settings(settings; samp=(settings.samp[1], settings.samp[2],-500.0))
    # define position of 1. orders
-   # @vt abs.(SpeckleReflections.ft2d(data_all[1])) abs.(SpeckleReflections.ft2d(data_all[end]))
+   # @vt abs.(SpeckleReflections.ft2d(data_all[1][:,:,1])) abs.(SpeckleReflections.ft2d(data_all[1][:,:,end]))
    abs_pos_start = (95.5, 95.5);
    abs_pos_end = (109.6, 109.6);
    abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_all[1],3));
    abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_all[1],3));
    abs_pos = cat(abs_pos_x, abs_pos_y, dims=2)
-   
-   rec_obj_prop = SpeckleReflections.main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos; do_prop=true, do_oct=true)
-   @vt abs.(rec_obj_prop)
+
+   settings_new = get_settings(settings; samp=(settings.samp[1], settings.samp[2],5.0))
+   Nz = 25 #round(Int, 105/settings_new.samp[3])
+   rec_obj = SpeckleReflections.main_reconstruction_holoscopy(data_all[1], settings_new, pup_dia, abs_pos, Nz; illu_all=nothing)
+   @vt abs.(rec_obj)
                                                               
    
    

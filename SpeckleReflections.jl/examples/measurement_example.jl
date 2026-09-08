@@ -270,30 +270,22 @@ function reconstruct_measured_data()
    CUDA.reclaim();
 
    # calculate new sampling due to cropping out first order during preprocessing
-   new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., -1000.0)
+   new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., 20.0)
    # define new settings with new sampling
    # ref_plane defines the index in the resulting stack where the propagation is 0
    settings_new = get_settings(settings, samp=new_sampling, lam=lam_vec)
    final_sz = size(datac[1])[1:2]
    res_roi = [1:final_sz[1], 1300-1:1300]
    
-   rec_obj_prop = SpeckleReflections.main_reconstruction_holoscopy(datac, settings_new, pup_dia, abs_pos; do_prop=true, roi=nothing, preserve_size=false, do_oct=false)
+   Nz = 101;
+   rec_obj_conj = SpeckleReflections.main_reconstruction_holoscopy(datac[1], settings_new, pup_dia, abs_pos, Nz; illu_all=nothing)
+
    GC.gc();
    CUDA.reclaim();
-   rec_obj_prop_abs = SpeckleReflections.ft2d(abs.(SpeckleReflections.ift2d(rec_obj_prop)));
-   rec_obj_abs = SpeckleReflections.ft2d(abs.(SpeckleReflections.ift2d(rec_obj)));
-
-   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj_prop, 3)))
-   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj, 3)))
-   
-   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj_prop_abs, 3)))
-   @vt abs.(SpeckleReflections.ift2d(SpeckleReflections.ift(rec_obj_abs, 3)))
-
-   @vt abs.(SpeckleReflections.ift(real.(SpeckleReflections.ift2d(rec_obj)), 3))
 
    # show result
-   @vt abs.(rec_obj) abs.(rec_obj_prop)
-   @vtp rec_obj rec_obj_prop
+   @vt abs.(rec_obj_conj)
+
    sd_rec_obj = SpeckleReflections.ift(collect(rec_obj),3);
    sd_rec_obj_prop = SpeckleReflections.ift(rec_obj_prop,3);
 

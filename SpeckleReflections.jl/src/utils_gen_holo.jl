@@ -38,7 +38,6 @@ function gen_illumination(obj, lam, settings)
 end
 
 function gen_illumination(::Type{Plane}, obj, lam, settings)
-   println("producing plane illumination")
    # plane = ones(ComplexF64,size(obj)[1:2])
    plane = similar(obj, size(obj)[1:2]) # RH
    plane .= 1; # RH
