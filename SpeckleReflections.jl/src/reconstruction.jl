@@ -27,7 +27,7 @@ end
 
 """
 
-function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos, Nz; illu_all=nothing, roi=nothing, preserve_size=false)
+function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos, Nz; illu_all=nothing, abs_pos_illu=nothing, roi=nothing, preserve_size=false)
     pad_fac = 1;
     holo_params = get_holo_params(size(data_all)[1:2], pad_fac; pup_dia=pup_dia, preserve_size=preserve_size)
     final_size = (holo_params.preserve_size) ? size(data_all)[1:2] : pup_dia .* holo_params.pad_fac # holo_params.pad_size
@@ -46,17 +46,25 @@ function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos, Nz;
         println("rec. image nr.", idx," of ", length(settings.lam), " images")
         k_ref = get_rel_ref(size(data_all[:,:,idx]), (abs_pos[idx,2], abs_pos[idx,1]))
         ref = gen_ref(data_all[:,:,idx], k_ref)
-        reconstruct_plane_hologram!(res_obj, data_all[:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref) # result is in pupil plane!
+        if isnothing(abs_pos_illu)
+            ref_illu = ref;
+        else
+            k_ref = get_rel_ref(size(illu_all[:,:,idx]), (abs_pos_illu[idx,2], abs_pos_illu[idx,1]))
+            ref_illu = gen_ref(illu_all[:,:,idx], k_ref);
+        end
+
+        reconstruct_plane_hologram!(res_obj, data_all[:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref)
+
         if isnothing(illu_all)
             # for plane wave reconstruction, the illumination is simply amp = 1 propagated to the same z as the obje field
             new_sampling = ((settings.samp[1:2] .* size(data_all)[1:2] ./ size(res_obj)[1:2])..., settings.samp[3])
-            settings_illu = get_settings(settings; illu_mode= Plane, samp=new_sampling)
-            res_illu = gen_illumination(res_obj, settings.lam[idx], settings_illu)
+            settings_illu = get_settings(settings; illu_mode=Plane, samp=new_sampling)
+            res_illu = conj.(gen_illumination(res_obj, settings.lam[idx], settings_illu))
         else
-            reconstruct_plane_hologram!(res_illu, illu_all[1][:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref) # result is in pupil plane!
+            reconstruct_plane_hologram!(res_illu, illu_all[:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref_illu)
         end
         # calibration of fields
-        obj = calibrate_hologram(collect(res_obj); illu_holo=collect(res_illu), calib_mode=CalibDivide);
+        obj = calibrate_hologram(collect(res_obj); illu_holo=conj.(collect(res_illu)), calib_mode=CalibDivide);
         # sum over k with appodisation
         res += obj.* apod_mask[idx]
     end

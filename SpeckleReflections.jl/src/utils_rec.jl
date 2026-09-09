@@ -134,6 +134,7 @@ function reconstruct_plane_hologram!(calib_trans, data::AbstractArray, holo_para
    # if (ndims(rec_field_obj_prop) > 2)
    #    nsz = (nsz..., size(rec_field_obj_prop)[3])
    # end
+
    calib_trans .= (holo_params.pad_fac > 0 && !isnothing(rec_field_obj_prop)) ? resample(opt_collect(rec_field_obj_prop), nsz) : rec_field_obj_prop
 end
 

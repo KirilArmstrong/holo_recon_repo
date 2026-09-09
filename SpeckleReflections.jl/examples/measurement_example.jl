@@ -222,81 +222,77 @@ function reconstruct_measured_data()
    ##--- define files and sizes ----------------------------------------------
    # define folders and filenames
    folder = raw"/home/zomamstu/measurements_temp//"
-   file_sample = folder * "image_discrete_steps_newobj.h5"
-   # file_illu = folder * "mirrorDG1_4562.8um.h5"
+   file_sample = folder * "image_discrete_pw_steps_100imgs_z3659_1pos.h5"
+   file_illu = folder * "image_discrete_pw_mirror_z2453_100img_1pos.h5"
    # file_trans_mat = file_sample[1:end-3] * "_translations.h5"
 
    ##--- define reagion of interest and get sizes ----------------------------------------------
    data_raw = load_data(file_sample)
+   illu_raw = load_data(file_illu)
    ct = size(data_raw[1])[1:2] .÷2; # [2460, 1840]
    rad = [1374, 1000];
    roi = [ct[1]-rad[1]+1:ct[1]+rad[1], ct[2]-rad[2]+1:ct[2]+rad[2]]
-   # @vt data_raw[1][roi[1], roi[2],1]
-   
+   # @vt data_raw[1][roi[1], roi[2],2]
+
+   # ----- get position of 1. order ------------ #
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,1];)))
-   abs_pos_start = Tuple(round.(Int, (880, 790).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_start = Tuple(round.(Int, (854, 700).*length.(roi)./size(data_raw[1])[1:2]));
    pup_dia = Tuple(round.(Int, (1500, 1100).*length.(roi)./size(data_raw[1])[1:2]));
-   # FT1 = SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],1])[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
-   # rec1 = SpeckleReflections.ift2d(FT1)
-   # @vtp rec1
-   # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],1])))[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,end];)))
-   abs_pos_end = Tuple(round.(Int, (995, 880).*length.(roi)./size(data_raw[1])[1:2]));
-   # FT1 = SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
-   # rec1 = SpeckleReflections.ift2d(FT1)
-   # @vtp rec1
-     
- # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])))[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
+   abs_pos_end = Tuple(round.(Int, (985, 784).*length.(roi)./size(data_raw[1])[1:2]));
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])))[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
    abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
    abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
-   abs_pos = cat(abs_pos_x, abs_pos_y, dims=2)
-   
-   #raw_sz = length.(Tuple(roi))
-   #k_ref = get_rel_ref(raw_sz, abs_pos) # (0.3761598857958601, -0.004282655246252677)
+   abs_pos = cat(abs_pos_y, abs_pos_x, dims=2)
+   # FD = SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
+   # @vt abs.(FD)
 
-   #pad_factor = 2
-   #holo_params = get_holo_params(raw_sz, pad_factor; pup_dia=pup_dia)
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,1];)))
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,end];)))
+   abs_pos_start = Tuple(round.(Int, (842, 715).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_end = Tuple(round.(Int, (970, 801).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
+   abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
+   abs_pos_illu = cat(abs_pos_y, abs_pos_x, dims=2)
+   # FD = SpeckleReflections.ft2d(illu_raw[1][roi[1],roi[2],1])[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
+   # @vt abs.(FD)
+
+   
+   # get lamdas
    hdf5obj = h5open(file_sample)
-   lam_str = attrs(hdf5obj["1"])["lambdas"]
-   lam_vec = parse.(Float32, split(strip(lam_str, ['[', ']'])))./1000;
+   lam_vec = attrs(hdf5obj["1"])["lambdas"] ./1000;
+   # lam_str = attrs(hdf5obj["1"])["lambdas"]
+   # lam_vec = parse.(Float32, split(strip(lam_str, ['[', ']'])))./1000;
    #k_vec=2*π./lam_vec;
    settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
 
    ##--- reconstruct on GPU using CUDA ----------------------------------------------
    #data_raw = load_data(file_sample, [roi...,:])
    datac = [cu(data_raw[1][roi[1], roi[2], :])];
+   illuc = [cu(illu_raw[1][roi[1], roi[2], :])];
    # illuc = cu.(data_illu_pr);
    GC.gc();
    CUDA.reclaim();
 
    # calculate new sampling due to cropping out first order during preprocessing
-   new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., 20.0)
+   new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., 7.5)
    # define new settings with new sampling
    # ref_plane defines the index in the resulting stack where the propagation is 0
    settings_new = get_settings(settings, samp=new_sampling, lam=lam_vec)
    final_sz = size(datac[1])[1:2]
    res_roi = [1:final_sz[1], 1300-1:1300]
    
-   Nz = 101;
-   rec_obj_conj = SpeckleReflections.main_reconstruction_holoscopy(datac[1], settings_new, pup_dia, abs_pos, Nz; illu_all=nothing)
+   Nz = 100;
+   rec_obj = SpeckleReflections.main_reconstruction_holoscopy(datac[1], settings_new, pup_dia, abs_pos, Nz;illu_all=illuc[1], abs_pos_illu=abs_pos_illu)#
 
    GC.gc();
    CUDA.reclaim();
 
    # show result
-   @vt abs.(rec_obj_conj)
-
-   sd_rec_obj = SpeckleReflections.ift(collect(rec_obj),3);
-   sd_rec_obj_prop = SpeckleReflections.ift(rec_obj_prop,3);
-
-   plot(abs.(collect(rec_obj[2050,2,:])))
-   plot!(abs.(collect(rec_obj_prop[2050,2,:])))
-   
-   plot(abs.(collect(sd_rec_obj[2050,2,:])))
-   plot!(abs.(collect(sd_rec_obj_prop[2050,2,:])))
+   @vt abs.(rec_obj)
 
    # save result
-   save_data(folder, "rec_tissue2", collect(rec_obj),".h5")
+   save_data(folder, "rec_750um_calib_"*"image_discrete_pw_steps_100imgs_z3659_1pos", [collect(rec_obj)],".h5")
 
    # save single slice as image
    save_obj = ave_img_theo[359:559,624:824]./ave_illu_theo[359:559,624:824]
