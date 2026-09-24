@@ -53,6 +53,7 @@ function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos, Nz;
             ref_illu = gen_ref(illu_all[:,:,idx], k_ref);
         end
 
+        # no specific reconstruction for speckle holograms needed anymore!    
         reconstruct_plane_hologram!(res_obj, data_all[:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref)
 
         if isnothing(illu_all)

@@ -33,11 +33,11 @@ to the according layer in the object.
 + samp: sampling of the object
 + NA: NA of the illumination
 """
-function gen_illumination(obj, lam, settings)
-   return gen_illumination(settings.illu_mode, obj, lam, settings);
+function gen_illumination(obj, lam, settings; phi_spek=nothing)
+   return gen_illumination(settings.illu_mode, obj, lam, settings; phi_spek=phi_spek);
 end
 
-function gen_illumination(::Type{Plane}, obj, lam, settings)
+function gen_illumination(::Type{Plane}, obj, lam, settings; phi_spek=nothing)
    # plane = ones(ComplexF64,size(obj)[1:2])
    plane = similar(obj, size(obj)[1:2]) # RH
    plane .= 1; # RH
@@ -46,12 +46,14 @@ function gen_illumination(::Type{Plane}, obj, lam, settings)
    return amp_prop
 end
 
-function gen_illumination(::Type{Speckle}, obj, lam, settings)
+function gen_illumination(::Type{Speckle}, obj, lam, settings; phi_spek=nothing)
    sz2d = size(obj)[1:2];
-   phi_spek = similar(obj, sz2d); # RH
-   rand!(phi_spek); # RH
-   phi_spek .*= 2pi;
-   phi_spek .-= pi;           # make random NxN matrix with range [0, 2pi]
+   if isnothing(phi_spek) # create new random speckle pattern
+      phi_spek = similar(obj, sz2d); # RH
+      rand!(phi_spek); # RH
+      phi_spek .*= 2pi;
+      phi_spek .-= pi;           # make random NxN matrix with range [0, 2pi]
+   end
    # rr2sep = rr2_sep(real_arr_type(typeof(obj)), sz2d, scale = 1 ./r_pupil);
    # pup = ft(exp.(1im.*phi_spek)) .*(rr2sep .< 1);
    illu = exp.(1im.*phi_spek) # ift(pup);

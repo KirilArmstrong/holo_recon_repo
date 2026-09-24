@@ -18,15 +18,21 @@ function do_simulation(obj, settings;
    fna = 3 .*[-settings.NA_det, settings.NA_det]; # tilt diagonal -> into settings?
    k_ref = fna[1].*settings.samp[1].*settings.n./settings.lam # vector of k_refs
 
+   # create new random speckle pattern
+   phi_spek = similar(obj, size(obj)[1:2]); # RH
+   rand!(phi_spek); # RH
+   phi_spek .*= 2pi;
+   phi_spek .-= pi; # make random NxN matrix with range [-pi, pi]
+   
    # NEW: Main Simulation loop iterating through wavelength spectrum
    for lam_num in range(1,Nlam)
       println("processing wavelength Nr.: $(lam_num)/$(Nlam)")
       freq_ref = k_ref[lam_num]/1.5
       ref = gen_ref(obj, [freq_ref, freq_ref])
 
-       #------Generation------------
+      #------Generation------------
       # generate illumination (already Propagated into sample)
-      illumination = gen_illumination(obj,settings.lam[lam_num], settings); # = propagated illumination into each Object layer (3D Matrix)
+      illumination = gen_illumination(obj, settings.lam[lam_num], settings; phi_spek=phi_spek); # = propagated illumination into each Object layer (3D Matrix)
       
       # illuminate object
       obj_illu = obj .* illumination;
@@ -52,6 +58,7 @@ function do_simulation(obj, settings;
       if (mod(lam_num, gc_period) == 0)
          reclaim_fct();
       end
+
    end
 
    if (num_photons > 0)

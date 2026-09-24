@@ -11,18 +11,36 @@ function my_reclaim()
     println("garbage collected, reclaimed CUDA mem.")
 end
 
-function calculate_theoretical_pixel_shift(settings, dum; N=100, Npxy=10)
+function calculate_theoretical_pixel_shift(settings, dum; N=100, shift_mode="square")
    shifts = Vector{Vector{Any}}(undef, N)
    dpx = dum/settings.samp[1] # original pixelsize on sampel = 2.5/settings.mag, 
    println("pixelshift: ", dpx)
-   dx = 0:dpx:(Npxy-1)*dpx
-   dy = 0:dpx:(Npxy-1)*dpx
    index = 0
-   for x in dx
-      for y in dy
-         index +=1
-         shifts[index] = [-x,-y,0]
+   if shift_mode == "square"
+      Npxy = round(Int, sqrt(N))
+      dx = 0:dpx:(Npxy-1)*dpx
+      dy = 0:dpx:(Npxy-1)*dpx
+      for x in dx
+         for y in dy
+            index +=1
+            shifts[index] = [-x,-y,0]
+         end
       end
+   elseif shift_mode == "diagonal"
+      dx = 0:dpx:(N-1)*dpx
+      for x in dx
+         index +=1
+         shifts[index] = [-x,-x,0]
+      end
+   elseif shift_mode == "line"
+      dx = 0:dpx:(N-1)*dpx
+      for x in dx
+         index +=1
+         shifts[index] = [-x,0,0]
+      end
+   else
+      println("Unknown shift_mode! No pre shifts were applied. Your given shift_mode was: ", shift_mode)
+      shifts .= 0
    end
    return shifts
 end
@@ -74,14 +92,8 @@ function get_translations_main_rh(data, data_illu, settings; red_dim=3, reg=1.0,
    return shifts, aligned;
 end
 
-function get_translations_main_ma(file_sample, file_illu, pre_shift_um, settings; abs_pos=nothing, pup_dia=nothing, frac=nothing, roi=nothing, bkg_sub=true, max_freq=0.15)
+function get_translations_main_ma(data, data_illu, pre_shift_um, settings; abs_pos=nothing, pup_dia=nothing, frac=nothing, bkg_sub=true, max_freq=0.15, shift_mode="square")
    
-   # read in non cropped data
-   data = load_data(file_sample, roi);
-   data_illu = similar(data);
-   data_illu .= load_data(file_illu, roi);
-
-
    # define reconstruction parameters and settings from FFT plot
    if isnothing(pup_dia)
       @vr sqrt.(abs.(SpeckleReflections.ft2d(data[1])))
@@ -90,11 +102,10 @@ function get_translations_main_ma(file_sample, file_illu, pre_shift_um, settings
    end
 
    k_ref = get_rel_ref(size(data[1]), abs_pos)
-   holo_params = get_holo_params(size(data[1]), 2; pup_dia=pup_dia)
-   settings = get_settings_meas(mag=63, samp_z=0.1, k_ref=k_ref, NA_det=1.4, NA_illu=1.4)
-   ref = gen_ref(data[1], settings)
+   holo_params = get_holo_params(size(data[1]), 1; pup_dia=pup_dia)
+   ref = gen_ref(data[1], k_ref)
 
-   # reconstruct holograms (not croped to ROI)
+   # reconstruct holograms
    datcut = rec_holo_shift.(data, Ref(holo_params), Ref(ref));
    illucut = rec_holo_shift(data_illu[1], holo_params, ref);
    doabs(x) = abs.(x) # function to do abs elementwise
@@ -108,28 +119,25 @@ function get_translations_main_ma(file_sample, file_illu, pre_shift_um, settings
    end
 
    # define new sampling due to cropping in Fourier Space
-   frac = size(data[1])[1:2] ./ size(datcut[1])
+   frac = size(data[1])[1:2] ./ size(datcut[1])[1:2]
    new_sampling = ((settings.samp[1:2] .* frac)..., settings.samp[3])
    settings_new = get_settings(settings, samp=new_sampling)
 
    # do course backshifting on measurement knowledge (we know how we theoretically shifted)
-   pre_shifts = calculate_theoretical_pixel_shift(settings_new, pre_shift_um; N=length(image_stack), Npxy=Int(sqrt(length(image_stack))))
+   pre_shifts = calculate_theoretical_pixel_shift(settings_new, pre_shift_um; N=length(image_stack), shift_mode=shift_mode)
+   nsz = Tuple(round.(Int,size(image_stack[1])[1:2] .- abs.(pre_shifts[end][1:2])));
+   ncent = size(image_stack[1])[1:2] .- nsz.÷2
+   image_stack = SpeckleReflections.select_region.(SpeckleReflections.shift.(image_stack, pre_shifts); new_size=nsz, center=ncent);
+   illu_stack_full = SpeckleReflections.select_region.(SpeckleReflections.shift.(Ref(illu_stack),  pre_shifts); new_size=nsz, center=ncent);
    # image_stack .= SpeckleReflections.shift.(image_stack, pre_shifts);
    # illu_stack_full = SpeckleReflections.shift.(Ref(illu_stack),  pre_shifts);
 
    # do fine shift based on course shifted images
-   nsz = Tuple(round.(Int,size(image_stack[1]) .- abs.(pre_shifts[end][1:2])));
-   ncent = nsz.÷2
-   image_stack = SpeckleReflections.select_region.(SpeckleReflections.shift.(image_stack, pre_shifts); new_size=nsz, center=ncent);
-   illu_stack_full = SpeckleReflections.select_region.(SpeckleReflections.shift.(Ref(illu_stack),  pre_shifts); new_size=nsz, center=ncent);
    fine_shifts, aligned = get_translations(image_stack,illu_stack_full , max_freq=max_freq)
-  
-  # fine_shifts, aligned = get_translations(image_stack, illu_stack_full, max_freq=max_freq)
    shifts = pre_shifts .+ fine_shifts # these shifts are scaled due to new sampling
    @vt sum(aligned, dims=3) sum(image_stack)
 
    # backscale shifts so they can be used on raw data
-   frac = size(data[1])./size(datcut[1]);
    shifts .= [ashift .* [frac[1], frac[2], 0.0] for ashift in shifts]
    pre_shifts .= [ashift .* [frac[1], frac[2], 0.0] for ashift in pre_shifts]
 
@@ -222,71 +230,100 @@ function reconstruct_measured_data()
    ##--- define files and sizes ----------------------------------------------
    # define folders and filenames
    folder = raw"/home/zomamstu/measurements_temp//"
-   file_sample = folder * "image_discrete_pw_steps_100imgs_z3659_1pos.h5"
-   file_illu = folder * "image_discrete_pw_mirror_z2453_100img_1pos.h5"
-   # file_trans_mat = file_sample[1:end-3] * "_translations.h5"
+   file_sample = folder * "image_discrete_spckl_steps_100ks_10pos_6ms.h5"
+   file_illu = folder * "image_discrete_spck_mirr_100ks_1pos_0.55ms.h5"
+   file_trans_mat = file_sample[1:end-3] * "_translations.h5"
+
+   fid = h5open(file_sample, "r")
+   # Struktur im Terminal anzeigen lassen
+   HDF5.show_tree(fid)
+   # Wichtig: Datei nach Gebrauch wieder schließen
+   close(fid)
+   Nimag = 10;
 
    ##--- define reagion of interest and get sizes ----------------------------------------------
-   data_raw = load_data(file_sample)
-   illu_raw = load_data(file_illu)
+   data_raw = load_data(file_sample, range=1:1)
+   illu_raw = load_data(file_illu, range=1:1)
    ct = size(data_raw[1])[1:2] .÷2; # [2460, 1840]
-   rad = [1374, 1000];
+   rad = ct#[1374, 1000];
    roi = [ct[1]-rad[1]+1:ct[1]+rad[1], ct[2]-rad[2]+1:ct[2]+rad[2]]
    # @vt data_raw[1][roi[1], roi[2],2]
 
    # ----- get position of 1. order ------------ #
-   # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,1];)))
-   abs_pos_start = Tuple(round.(Int, (854, 700).*length.(roi)./size(data_raw[1])[1:2]));
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,1];)))
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,end];)))
    pup_dia = Tuple(round.(Int, (1500, 1100).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_start = Tuple(round.(Int, (962, 715+165).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_end = Tuple(round.(Int, (970+120, 801+160).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
+   abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
+   abs_pos_illu = cat(abs_pos_y, abs_pos_x, dims=2)
+   # FD = SpeckleReflections.ft2d(illu_raw[1][roi[1],roi[2],end])[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
+   # @vt abs.(FD)
+
+   # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,1];)))
+   abs_pos_start = Tuple(round.(Int, (854+120, 700+175).*length.(roi)./size(data_raw[1])[1:2]));
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,end];)))
-   abs_pos_end = Tuple(round.(Int, (985, 784).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_end = Tuple(round.(Int, (985+120, 784+165).*length.(roi)./size(data_raw[1])[1:2]));
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])))[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
    abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
    abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
    abs_pos = cat(abs_pos_y, abs_pos_x, dims=2)
-   # FD = SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
+   # FD = SpeckleReflections.ft2d(data_raw[10][roi[1],roi[2]])[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
    # @vt abs.(FD)
 
-   # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,1];)))
-   # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,end];)))
-   abs_pos_start = Tuple(round.(Int, (842, 715).*length.(roi)./size(data_raw[1])[1:2]));
-   abs_pos_end = Tuple(round.(Int, (970, 801).*length.(roi)./size(data_raw[1])[1:2]));
-   abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
-   abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
-   abs_pos_illu = cat(abs_pos_y, abs_pos_x, dims=2)
-   # FD = SpeckleReflections.ft2d(illu_raw[1][roi[1],roi[2],1])[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
-   # @vt abs.(FD)
-
-   
    # get lamdas
    hdf5obj = h5open(file_sample)
    lam_vec = attrs(hdf5obj["1"])["lambdas"] ./1000;
-   # lam_str = attrs(hdf5obj["1"])["lambdas"]
-   # lam_vec = parse.(Float32, split(strip(lam_str, ['[', ']'])))./1000;
-   #k_vec=2*π./lam_vec;
-   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
+   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Speckle) # give nbr. of images to use during reconstruction
+
+   # get translation of speckle positions
+   if (false)
+      data_raw = load_data(file_sample, [roi...,1]) # only read out first image of each position
+      illu_raw = similar(data_raw)
+      illu_raw .= load_data(file_illu, [roi...,1]) # only read out first image of each position
+
+      shifts2, shifts_theo = get_translations_main_ma(data_raw, illu_raw, -4.0, settings; abs_pos=abs_pos_start, pup_dia=pup_dia, bkg_sub=false, max_freq=1.0, shift_mode="diagonal")
+      plt = plot_shifts(shifts2, shifts_theo)
+      
+      savefig(plt,folder*"translations_bkg_sub.png")   
+      save_translations(shifts_theo, file_sample[1:end-3]*"_theo")
+   end
 
    ##--- reconstruct on GPU using CUDA ----------------------------------------------
-   #data_raw = load_data(file_sample, [roi...,:])
-   datac = [cu(data_raw[1][roi[1], roi[2], :])];
-   illuc = [cu(illu_raw[1][roi[1], roi[2], :])];
-   # illuc = cu.(data_illu_pr);
-   GC.gc();
-   CUDA.reclaim();
+   Nz = 50;
+   rec_obj = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
+   for img_num in range(1,Nimag)
+      data_raw = load_data(file_sample, range=img_num:img_num, [roi...,:]) # only read out data for one speckle position
+      illu_raw = load_data(file_illu, range=1:1, [roi...,:]) # only one position
 
-   # calculate new sampling due to cropping out first order during preprocessing
-   new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., 7.5)
-   # define new settings with new sampling
-   # ref_plane defines the index in the resulting stack where the propagation is 0
-   settings_new = get_settings(settings, samp=new_sampling, lam=lam_vec)
-   final_sz = size(datac[1])[1:2]
-   res_roi = [1:final_sz[1], 1300-1:1300]
+      # shift data here so illumination fits!!
+      if img_num > 1
+         for kidx in range(1, size(data_raw[1])[3])
+            data_raw[1][:,:,kidx] .= SpeckleReflections.shift(data_raw[1][:,:,kidx], shifts_theo[img_num])
+         end
+      end
    
-   Nz = 100;
-   rec_obj = SpeckleReflections.main_reconstruction_holoscopy(datac[1], settings_new, pup_dia, abs_pos, Nz;illu_all=illuc[1], abs_pos_illu=abs_pos_illu)#
+      datac = [cu(data_raw[1][roi[1], roi[2], :])];
+      illuc = [cu(illu_raw[1][roi[1], roi[2], :])];
+      GC.gc();
+      CUDA.reclaim();
 
-   GC.gc();
-   CUDA.reclaim();
+      # calculate new sampling due to cropping out first order during preprocessing
+      new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., 5.0)
+      # define new settings with new sampling
+      # ref_plane defines the index in the resulting stack where the propagation is 0
+      settings_new = get_settings(settings, samp=new_sampling, lam=lam_vec)   
+      
+      # reconstruct each Holoscopic sweep and sum over speckle positions
+      res = SpeckleReflections.main_reconstruction_holoscopy(datac[1], settings_new, pup_dia, abs_pos, Nz;illu_all=illuc[1], abs_pos_illu=abs_pos_illu)#
+      if img_num >1
+         res = SpeckleReflections.correct_phase_offset_rh(res, rec_obj)
+      end
+      rec_obj += res;
+      GC.gc();
+      CUDA.reclaim();
+   end
 
    # show result
    @vt abs.(rec_obj)

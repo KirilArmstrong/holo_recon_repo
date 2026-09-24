@@ -20,13 +20,14 @@ end
 
 function simulate_and_reconstruct()
    sz = (501,501,107)
-   k_vec = LinRange(2*π/0.805, 2*π/0.885, 400);
+   k_vec = LinRange(2*π/0.805, 2*π/0.885, 100);
    lam_vec=2*π./k_vec;
-   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Plane) # give nbr. of images to use during reconstruction
+   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Speckle) # give nbr. of images to use during reconstruction
    num_photons = 100
    if (true)
       obj = generate_object_3d(type="Discs"; settings.samp, res_dist=0, size_xyz=sz, dz=106);
-      name_simu = "test_sim_discs";
+      folder = raw"../../simulations/";
+      name_simu = "test_sim_discs_siholoscopy";
    else
       obj = filaments3D(sz) 
       # obj1 = generate_object_3d(type="Discs"; settings.samp, res_dist=5, size_xyz=sz, dz=50);
@@ -40,13 +41,22 @@ function simulate_and_reconstruct()
         obj = cu(obj);
    end
 
-   @time data_all, illu_all, phase_offset = do_simulation(obj, settings; random_phases=random_phases, reclaim_fct=my_reclaim, num_photons = 0); #   34 sec, 4 Gb GPU, 100 imgs, 301x301x50
-   GC.gc()
-   CUDA.reclaim()
+   Nimag = 20; # define number of speckle field positions
+   folder = raw"../../simulations/";
+   # create a sweep dataset for each speckle position
+   for img_num in range(1,Nimag)
+      data_all, illu_all, phase_offset = do_simulation(obj, settings; random_phases=random_phases, reclaim_fct=my_reclaim, num_photons = 0); #   34 sec, 4 Gb GPU, 100 imgs, 301x301x50
+      GC.gc()
+      CUDA.reclaim()
 
-   if (true)
-      folder = raw"../../simulations/";
-      save_all(folder, name_simu, settings, data_all, illu_all; phase_offset=nothing)
+      println("save dataset nbr. ", img_num, "/", Nimag)
+      if img_num==1
+         # overwrites dataset if already existent
+         save_all(folder, name_simu, settings, data_all, illu_all; phase_offset=nothing)
+      else
+         # only appends to dataset
+         append_all(folder, name_simu, data_all, illu_all, img_num; phase_offset=nothing)
+      end
    end
 
    #------Reconstruction--Loads the saved data ----------
@@ -57,9 +67,15 @@ function simulate_and_reconstruct()
       name_simu = "test_sim_discs";
    end
 
+   fid = h5open(folder*name_simu*".h5", "r")
+   # Struktur im Terminal anzeigen lassen
+   HDF5.show_tree(fid)
+   # Wichtig: Datei nach Gebrauch wieder schließen
+   close(fid)
+
    preprocess_fct = nothing;
    slice_arr = load_data(folder*name_simu*".h5"; range=1:1)[1][:,:,1];
-   pup_dia=(146,146);
+   pup_dia=(157,157);
    #@vt abs.(SpeckleReflections.ft2d(slice_arr))
     if (false)  # If you use this less memory should be consumed.
       pad_factor = 2
@@ -96,8 +112,15 @@ function simulate_and_reconstruct()
 
    settings_new = get_settings(settings; samp=(settings.samp[1], settings.samp[2],5.0))
    Nz = 25 #round(Int, 105/settings_new.samp[3])
-   rec_obj = SpeckleReflections.main_reconstruction_holoscopy(data_all[1], settings_new, pup_dia, abs_pos, Nz; illu_all=nothing)
+
+   rec_obj = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
+   res = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
+   for pos_num in range(1, length(data_all))
+      res .= SpeckleReflections.main_reconstruction_holoscopy(data_all[pos_num], settings_new, pup_dia, abs_pos, Nz; illu_all=illu_all[pos_num])
+      rec_obj .= rec_obj .+ res;
+   end
    @vt abs.(rec_obj)
+   @vt abs.(res)
                                                               
    
    

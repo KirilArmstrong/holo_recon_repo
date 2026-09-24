@@ -36,6 +36,22 @@ function save_all(folder, fname, settings, data_all, illu_all; phase_offset=noth
    return
 end
 
+function append_all(folder, fname, data_all, illu_all, Nimag; phase_offset=nothing, fileext=".h5")
+   h5open(folder*fname*fileext, "r+") do fd_holo  # appends to the current file
+      h5open(folder*"illu_"*fname*fileext, "r+") do fd_illu
+         h5open(folder*"phase_"*fname*fileext, "r+") do fd_phase
+            write(fd_holo, string(Nimag), data_all[1])
+            write(fd_illu, string(Nimag), illu_all[1])
+            # write(fd_ref, string(img_num), ref_all[img_num])
+            if !isnothing(phase_offset)
+               write(fd_phase, string(Nimag), phase_offset[1])
+            end
+         end # do
+      end # do
+   end # do
+   return
+end
+
 function save_translations(shifts, fname, fileext=".h5")
     print("\n start saving translation matrix...")
     # ave_img2 = zeros(size(data[:,:,1]))
