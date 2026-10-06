@@ -53,7 +53,8 @@ function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos, Nz;
             ref_illu = gen_ref(illu_all[:,:,idx], k_ref);
         end
 
-        # no specific reconstruction for speckle holograms needed anymore!    
+        # no specific reconstruction for speckle holograms needed anymore!  
+        # returns reconstructed field in spatial coordinates  
         reconstruct_plane_hologram!(res_obj, data_all[:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref)
 
         if isnothing(illu_all)
@@ -64,12 +65,44 @@ function main_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos, Nz;
         else
             reconstruct_plane_hologram!(res_illu, illu_all[:,:,idx], holo_params, settings, Nz, settings.lam[idx]; ref=ref_illu)
         end
-        # calibration of fields
-        obj = calibrate_hologram(collect(res_obj); illu_holo=conj.(collect(res_illu)), calib_mode=CalibDivide);
-        # sum over k with appodisation
+        # calibration of fields in spatial coordinates
+        obj = calibrate_hologram(collect(res_obj); illu_holo=conj.(collect(res_illu)), calib_mode=CalibConj);
+        # sum over k with appodisation in spatial coordinates (?)
         res += obj.* apod_mask[idx]
     end
     return res
+end
+
+function fft_reconstruction_holoscopy(data_all, settings, pup_dia, abs_pos; roi=nothing, preserve_size=false)
+    pad_fac = 1;
+    Nz = size(data_all)[3];
+    holo_params = get_holo_params(size(data_all)[1:2], pad_fac; pup_dia=pup_dia, preserve_size=preserve_size)
+    final_size = (holo_params.preserve_size) ? size(data_all)[1:2] : pup_dia .* holo_params.pad_fac # holo_params.pad_size
+    if isnothing(roi)
+        roi = [1:final_size[1], 1:final_size[2]];
+    end
+    # reserve Memory for results
+    res_obj = zeros(Float32, final_size[1], final_size[2], 2);
+    res_obj = cu(complex(res_obj));
+    res = complex(zeros(ComplexF64, final_size[1], final_size[2], Nz)); #needs to be initialised with zeros otherwise initial values of array will ifluence the result!!
+    # generate apodisation mask over k
+    # apod_mask = generate_appodisation_mask((size(res_obj)[1:2]...,length(settings.lam)))
+    # loop over k
+    for idx in range(1, length(settings.lam))
+        println("rec. image nr.", idx," of ", length(settings.lam), " images")
+        k_ref = get_rel_ref(size(data_all[:,:,idx]), (abs_pos[idx,2], abs_pos[idx,1]))
+        ref = gen_ref(data_all[:,:,idx], k_ref)
+
+        # no specific reconstruction for speckle holograms needed anymore!  
+        # returns reconstructed field in spatial coordinates  
+        reconstruct_plane_hologram!(res_obj, data_all[:,:,idx], holo_params, settings, 2, settings.lam[idx]; ref=ref)
+
+        # sum over k with appodisation in spatial coordinates (?)
+        res[:,:,idx]= collect(res_obj[:,:,1]);
+    end
+    FD = ft2d(res);
+    OCT = ift(FD, 3);
+    return ift2d(OCT)
 end
 
 # function main_reconstruction_holoscopy(data_all, illu_all=nothing, settings, pup_dia, abs_pos; do_prop=false, roi=nothing, preserve_size=false, do_oct=true)

@@ -14,6 +14,7 @@ export do_simulation, apply_noise
 export save_all, save_translations, load_all, load_data, ImageSettings, Speckle
 export CalibMode, CalibConj, CalibDivide, CalibPhase
 export main_reconstruction, apply_translation, get_rel_ref, rec_holo_shift, gen_ref, get_holo_params
+export correct_phase_offset_3D!
 
 include("utils_rec.jl")
 include("reconstruction.jl")

@@ -22,12 +22,12 @@ function simulate_and_reconstruct()
    sz = (501,501,107)
    k_vec = LinRange(2*π/0.805, 2*π/0.885, 100);
    lam_vec=2*π./k_vec;
-   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 1.0, illu_mode=SpeckleReflections.Speckle) # give nbr. of images to use during reconstruction
+   settings = get_settings(lam=lam_vec, n=1.0, NA_illu=0.16, NA_det=0.16,  mag=5, samp_z = 5.0, illu_mode=SpeckleReflections.Speckle) # give nbr. of images to use during reconstruction
    num_photons = 100
    if (true)
       obj = generate_object_3d(type="Discs"; settings.samp, res_dist=0, size_xyz=sz, dz=106);
       folder = raw"../../simulations/";
-      name_simu = "test_sim_discs_siholoscopy";
+      name_simu = "SI_sim_discs";
    else
       obj = filaments3D(sz) 
       # obj1 = generate_object_3d(type="Discs"; settings.samp, res_dist=5, size_xyz=sz, dz=50);
@@ -41,7 +41,7 @@ function simulate_and_reconstruct()
         obj = cu(obj);
    end
 
-   Nimag = 20; # define number of speckle field positions
+   Nimag = 50; # define number of speckle field positions
    folder = raw"../../simulations/";
    # create a sweep dataset for each speckle position
    for img_num in range(1,Nimag)
@@ -58,6 +58,7 @@ function simulate_and_reconstruct()
          append_all(folder, name_simu, data_all, illu_all, img_num; phase_offset=nothing)
       end
    end
+   save_data(folder, name_simu*"_obj", [collect(obj)])
 
    #------Reconstruction--Loads the saved data ----------
 
@@ -86,7 +87,7 @@ function simulate_and_reconstruct()
    end
 
    settings, data_all, illu_all = load_all(folder, name_simu; preprocess_fct=preprocess_fct);
-
+ 
 
    if (false) # just to display the data
       @vt data_all[1]
@@ -110,23 +111,28 @@ function simulate_and_reconstruct()
    abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_all[1],3));
    abs_pos = cat(abs_pos_x, abs_pos_y, dims=2)
 
-   settings_new = get_settings(settings; samp=(settings.samp[1], settings.samp[2],5.0))
-   Nz = 25 #round(Int, 105/settings_new.samp[3])
+   settings_new = get_settings(settings; samp=(settings.samp[1], settings.samp[2],25.0))
+   Nz = 100 #round(Int, 105/settings_new.samp[3])
 
-   rec_obj = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
+   rec_obj_si = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
    res = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
    for pos_num in range(1, length(data_all))
       res .= SpeckleReflections.main_reconstruction_holoscopy(data_all[pos_num], settings_new, pup_dia, abs_pos, Nz; illu_all=illu_all[pos_num])
-      rec_obj .= rec_obj .+ res;
+      # if pos_num >1
+      #    correct_phase_offset_3D!(res, rec_obj)
+      # end
+      rec_obj_si .= rec_obj_si .+ res;
+
+      # rec_obj_fft = SpeckleReflections.fft_reconstruction_holoscopy(data_all[pos_num], settings_new, pup_dia, abs_pos;)
    end
-   @vt abs.(rec_obj)
-   @vt abs.(res)
+   @vt abs.(rec_obj_fft) abs.(rec_obj_pw) abs.(rec_obj_si)
                                                               
    
    
    @vt abs.(rec_obj)[225:275,225:275,:] abs.(rec_obj_pw)[225:275,225:275,:]
 
-   save_data(folder, "rec_"*name_simu, [collect(rec_obj_pw)]) 
+   save_data(folder, "rec_2500um_additive_"*name_simu, [collect(rec_obj_si)])
+   save_data(folder, "rec_2500um_fft_"*name_simu, [collect(rec_obj_fft)])
    save_data(folder, "found_phase_offsets_zeiss_"*name_simu, phase_offsets_found_zeiss) 
 
    # @time rec_obj, phase_offsets_found_iter2 = main_reconstruction(data_all, illu_all, settings, Nz; 

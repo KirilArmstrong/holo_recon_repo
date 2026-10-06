@@ -148,7 +148,7 @@ function calibrate_hologram(obj_holo; illu_holo=nothing, calib_mode::Type = Cali
       return obj_holo .* exp.(-1im .* angle.(illu_holo))
    elseif (calib_mode == CalibDivide)
       ave_mag = isnothing(illu_holo) ? 1 : sum(abs.(illu_holo))/(size(illu_holo,1)*size(illu_holo,2)) # find average Intensity in illumination and define regularisation strength on it
-      eps = ave_mag
+      eps = ave_mag;
       return obj_holo .* conj.(illu_holo) ./ (illu_holo.*conj(illu_holo) .+ eps)
    else
       error("unknown calibration mode. Choose CalibConj, CalibPhase or CalibDivide")
@@ -396,6 +396,13 @@ function correct_phase_offset_rh(field, field_ref, mask=1)
    phase_offset = angle(sum(field .*conj(field_ref) .* mask))
    field_corr = field.*exp(-1im*phase_offset);
    return field_corr, phase_offset
+end
+
+function correct_phase_offset_3D!(field, field_ref, mask=1)
+   for idx in range(1, size(field)[3])
+      phase_offset = angle(sum(field[:,:,idx] .*conj(field_ref[:,:,idx]) .* mask))
+      field[:,:,idx] .= field[:,:,idx].*exp(-1im*phase_offset);
+   end
 end
 
 function get_pca_mask(fields)

@@ -92,7 +92,7 @@ function get_translations_main_rh(data, data_illu, settings; red_dim=3, reg=1.0,
    return shifts, aligned;
 end
 
-function get_translations_main_ma(data, data_illu, pre_shift_um, settings; abs_pos=nothing, pup_dia=nothing, frac=nothing, bkg_sub=true, max_freq=0.15, shift_mode="square")
+function get_translations_main_ma(data, data_illu, pre_shift_um, settings; abs_pos=nothing, pup_dia=nothing, bkg_sub=false, max_freq=0.15, shift_mode="square")
    
    # define reconstruction parameters and settings from FFT plot
    if isnothing(pup_dia)
@@ -230,8 +230,8 @@ function reconstruct_measured_data()
    ##--- define files and sizes ----------------------------------------------
    # define folders and filenames
    folder = raw"/home/zomamstu/measurements_temp//"
-   file_sample = folder * "image_discrete_spckl_steps_100ks_10pos_6ms.h5"
-   file_illu = folder * "image_discrete_spck_mirr_100ks_1pos_0.55ms.h5"
+   file_sample = folder * "image_discrete_speckle_mirr_100imgs_1pos_int1ms.h5"
+   file_illu = folder * "image_discrete_speckle_mirr_100imgs_1pos_int1ms.h5"
    file_trans_mat = file_sample[1:end-3] * "_translations.h5"
 
    fid = h5open(file_sample, "r")
@@ -239,7 +239,7 @@ function reconstruct_measured_data()
    HDF5.show_tree(fid)
    # Wichtig: Datei nach Gebrauch wieder schließen
    close(fid)
-   Nimag = 10;
+   Nimag = 1;
 
    ##--- define reagion of interest and get sizes ----------------------------------------------
    data_raw = load_data(file_sample, range=1:1)
@@ -253,24 +253,28 @@ function reconstruct_measured_data()
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,1];)))
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(illu_raw[1][:,:,end];)))
    pup_dia = Tuple(round.(Int, (1500, 1100).*length.(roi)./size(data_raw[1])[1:2]));
-   abs_pos_start = Tuple(round.(Int, (962, 715+165).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_start = Tuple(round.(Int, (952, 715+180).*length.(roi)./size(data_raw[1])[1:2]));
    abs_pos_end = Tuple(round.(Int, (970+120, 801+160).*length.(roi)./size(data_raw[1])[1:2]));
    abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
    abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
    abs_pos_illu = cat(abs_pos_y, abs_pos_x, dims=2)
-   # FD = SpeckleReflections.ft2d(illu_raw[1][roi[1],roi[2],end])[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
-   # @vt abs.(FD)
 
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,1];)))
-   abs_pos_start = Tuple(round.(Int, (854+120, 700+175).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_start = Tuple(round.(Int, (854+110, 700+185).*length.(roi)./size(data_raw[1])[1:2]));
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][:,:,end];)))
-   abs_pos_end = Tuple(round.(Int, (985+120, 784+165).*length.(roi)./size(data_raw[1])[1:2]));
+   abs_pos_end = Tuple(round.(Int, (970+120, 801+150).*length.(roi)./size(data_raw[1])[1:2]));
    # @vr sqrt.(abs.(SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],end])))[abs_pos_end[1]-pup_dia[1]÷2:abs_pos_end[1]+pup_dia[1]÷2,abs_pos_end[2]-pup_dia[2]÷2:abs_pos_end[2]+pup_dia[2]÷2]
    abs_pos_x = LinRange.(abs_pos_start[1], abs_pos_end[1], size(data_raw[1],3));
    abs_pos_y = LinRange.(abs_pos_start[2], abs_pos_end[2], size(data_raw[1],3));
-   abs_pos = cat(abs_pos_y, abs_pos_x, dims=2)
-   # FD = SpeckleReflections.ft2d(data_raw[10][roi[1],roi[2]])[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2,abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2]
+   abs_pos = cat(abs_pos_x, abs_pos_y, dims=2)
+   # FD = SpeckleReflections.ft2d(data_raw[1][roi[1],roi[2],1])[abs_pos_start[1]-pup_dia[1]÷2:abs_pos_start[1]+pup_dia[1]÷2-1, abs_pos_start[2]-pup_dia[2]÷2:abs_pos_start[2]+pup_dia[2]÷2 -1]
    # @vt abs.(FD)
+
+   # k_ref = get_rel_ref(size(data_raw[1][roi[1],roi[2],end]), abs_pos[57,:])
+   # holo_params = get_holo_params(size(data_raw[1])[1:2], 1; pup_dia=pup_dia)
+   # ref = gen_ref(data_raw[1][:,:,1], k_ref)
+   # datcut = rec_holo_shift(data_raw[1][roi[1],roi[2],57], holo_params, ref);
+   # @vt abs.(datcut)
 
    # get lamdas
    hdf5obj = h5open(file_sample)
@@ -283,16 +287,18 @@ function reconstruct_measured_data()
       illu_raw = similar(data_raw)
       illu_raw .= load_data(file_illu, [roi...,1]) # only read out first image of each position
 
-      shifts2, shifts_theo = get_translations_main_ma(data_raw, illu_raw, -4.0, settings; abs_pos=abs_pos_start, pup_dia=pup_dia, bkg_sub=false, max_freq=1.0, shift_mode="diagonal")
+      shifts2, shifts_theo = get_translations_main_ma(data_raw, illu_raw, -4.0, settings; abs_pos=abs_pos_start, pup_dia=pup_dia, bkg_sub=true, max_freq=1.0, shift_mode="line")
       plt = plot_shifts(shifts2, shifts_theo)
       
       savefig(plt,folder*"translations_bkg_sub.png")   
-      save_translations(shifts_theo, file_sample[1:end-3]*"_theo")
+      save_translations(shifts2, file_sample[1:end-3]*"_bkg_sub")
    end
 
    ##--- reconstruct on GPU using CUDA ----------------------------------------------
    Nz = 50;
+   Nimag = 1;
    rec_obj = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
+   shifts = load_data(folder*"image_discrete_speckle_steps_100imgs_50pos_onlyX_int9.5ms_theo_translations.h5")
    for img_num in range(1,Nimag)
       data_raw = load_data(file_sample, range=img_num:img_num, [roi...,:]) # only read out data for one speckle position
       illu_raw = load_data(file_illu, range=1:1, [roi...,:]) # only one position
@@ -300,7 +306,7 @@ function reconstruct_measured_data()
       # shift data here so illumination fits!!
       if img_num > 1
          for kidx in range(1, size(data_raw[1])[3])
-            data_raw[1][:,:,kidx] .= SpeckleReflections.shift(data_raw[1][:,:,kidx], shifts_theo[img_num])
+            data_raw[1][:,:,kidx] .= SpeckleReflections.shift(data_raw[1][:,:,kidx], shifts[img_num])
          end
       end
    
@@ -310,7 +316,7 @@ function reconstruct_measured_data()
       CUDA.reclaim();
 
       # calculate new sampling due to cropping out first order during preprocessing
-      new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., 5.0)
+      new_sampling = ((settings.samp[1:2] .* length.(roi) ./ size(datac[1])[1:2])..., 10.0)
       # define new settings with new sampling
       # ref_plane defines the index in the resulting stack where the propagation is 0
       settings_new = get_settings(settings, samp=new_sampling, lam=lam_vec)   
@@ -318,7 +324,7 @@ function reconstruct_measured_data()
       # reconstruct each Holoscopic sweep and sum over speckle positions
       res = SpeckleReflections.main_reconstruction_holoscopy(datac[1], settings_new, pup_dia, abs_pos, Nz;illu_all=illuc[1], abs_pos_illu=abs_pos_illu)#
       if img_num >1
-         res = SpeckleReflections.correct_phase_offset_rh(res, rec_obj)
+         correct_phase_offset_3D!(res, rec_obj)
       end
       rec_obj += res;
       GC.gc();
@@ -327,16 +333,25 @@ function reconstruct_measured_data()
 
    # show result
    @vt abs.(rec_obj)
+   @vtp rec_obj
+
+   shifts_mirror = calculate_theoretical_pixel_shift(settings, -4.0;N=100)
+   ave_mirror = similar(rec_obj);
+   ave_mirror .= 0.0;
+   for shift in shifts_mirror
+      for idx in range(1, size(rec_obj)[3])
+         ave_mirror[:,:,idx] = ave_mirror[:,:,idx] .+ SpeckleReflections.shift(rec_obj[:,:,idx], shift)
+      end
+   end
+   @vtp ave_mirror rec_obj      
 
    # save result
-   save_data(folder, "rec_750um_calib_"*"image_discrete_pw_steps_100imgs_z3659_1pos", [collect(rec_obj)],".h5")
+   save_data(folder, "rec_500um_calib_phasecorr_discrete_speckle_steps_100imgs_50pos_onlyX_int9.5ms", [collect(rec_obj)],".h5")
 
    # save single slice as image
    save_obj = ave_img_theo[359:559,624:824]./ave_illu_theo[359:559,624:824]
    @vt save_obj
    save(folder*"incoherent_sum_zoomed_pic1_theo.png",(save_obj.-minimum(save_obj))./(maximum(save_obj.-minimum(save_obj))))
-
-
 
    ##--- find shifts (only needs to be done once) ----------------------------------------------
    # since this is a huge code block it was put in a function.
