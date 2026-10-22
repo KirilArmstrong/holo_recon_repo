@@ -77,14 +77,13 @@ Parameters:
 - settings:  see `get_settings` and `get_settings_meas`
 """
 function reconstruct_speckle_hologram!(calib_trans, calib_illu, data::AbstractArray, holo_params::HoloParams, settings::ImageSettings, Nz, lam, rec_field_illu_ft=nothing; translation_px=nothing, ref=nothing)
-
    # 2. reconstruct single-plane off-axis Hologramm
    rec_field_obj_ft = (eltype(data) <: Complex) ? data : opt_collect(rec_holo_shift(data, holo_params, ref))
 
    new_sampling = ((settings.samp[1:2] .* size(data)[1:2] ./ size(rec_field_obj_ft)[1:2])..., settings.samp[3])
 
    PType = complex_arr_type(typeof(expand_dims(rec_field_obj_ft, Val(3))))
-   propagator = propagator_col(PType, (size(rec_field_obj_ft)[1:2]..., Nz), new_sampling, lam; ref_idx = settings.ref_plane)
+   propagator = propagator_col(PType, (size(rec_field_obj_ft)[1:2]..., Nz), new_sampling, lam; ref_idx = 1)
 
    aperture = get_propagator_mask_3d(rec_field_obj_ft, lam, new_sampling[1:2], settings.NA_det)
 
@@ -127,7 +126,7 @@ function reconstruct_plane_hologram!(calib_trans, data::AbstractArray, holo_para
 
    aperture = get_propagator_mask_3d(rec_field_obj_ft, lam, new_sampling[1:2], settings.NA_det)
 
-   rec_field_obj_prop = ift2d(rec_field_obj_ft .* conj.(propagator .* aperture)); # keep in pupil plane for further oct reconstruction
+   rec_field_obj_prop = ift2d(rec_field_obj_ft .* propagator .* aperture); # keep in pupil plane for further oct reconstruction
 
    # 4. upsample results
    nsz = size(calib_trans)#size(rec_field_obj_prop)[2].*(holo_params.pad_fac, holo_params.pad_fac)

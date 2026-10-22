@@ -87,6 +87,12 @@ function simulate_and_reconstruct()
    end
 
    settings, data_all, illu_all = load_all(folder, name_simu; preprocess_fct=preprocess_fct);
+
+   settings = h5open("/home/zomamstu/measurements_temp/settings_SI_sim_discs.h5","r") do file
+      attrs(file)["settings"]
+      deserialize(IOBuffer(attrs(file)["settings"]))
+   end
+   obj = load_data("/home/zomamstu/measurements_temp/sim_discs_obj.h5")
  
 
    if (false) # just to display the data
@@ -114,24 +120,27 @@ function simulate_and_reconstruct()
    settings_new = get_settings(settings; samp=(settings.samp[1], settings.samp[2],25.0))
    Nz = 100 #round(Int, 105/settings_new.samp[3])
 
-   rec_obj_si = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
+   rec_obj_conj = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
+   rec_illu = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
    res = zeros(ComplexF64, pup_dia[1], pup_dia[2], Nz);
    for pos_num in range(1, length(data_all))
-      res .= SpeckleReflections.main_reconstruction_holoscopy(data_all[pos_num], settings_new, pup_dia, abs_pos, Nz; illu_all=illu_all[pos_num])
+      res, illu = SpeckleReflections.main_reconstruction_holoscopy(data_all[pos_num], settings_new, pup_dia, abs_pos, Nz; illu_all=illu_all[pos_num], calib_mode=CalibConj)
       # if pos_num >1
       #    correct_phase_offset_3D!(res, rec_obj)
       # end
-      rec_obj_si .= rec_obj_si .+ res;
+      rec_obj_conj .= rec_obj_conj .+ (res./illu);
 
       # rec_obj_fft = SpeckleReflections.fft_reconstruction_holoscopy(data_all[pos_num], settings_new, pup_dia, abs_pos;)
    end
-   @vt abs.(rec_obj_fft) abs.(rec_obj_pw) abs.(rec_obj_si)
+
+   rec_n3, illu_n3 = SpeckleReflections.main_reconstruction_SI_holoscopy(data_all, settings_new, pup_dia, abs_pos, Nz; illu_all=illu_all, calib_mode=CalibConj)
+
+   @vt abs.(rec_obj_fft) abs.(rec_obj_pw)
+   @vt abs.(rec_obj_si) abs.(rec_obj_conj) abs.(rec_n3)
                                                               
-   
-   
    @vt abs.(rec_obj)[225:275,225:275,:] abs.(rec_obj_pw)[225:275,225:275,:]
 
-   save_data(folder, "rec_2500um_additive_"*name_simu, [collect(rec_obj_si)])
+   save_data(folder, "rec_2500um_n3_V2_"*name_simu, [collect(rec_n3)])
    save_data(folder, "rec_2500um_fft_"*name_simu, [collect(rec_obj_fft)])
    save_data(folder, "found_phase_offsets_zeiss_"*name_simu, phase_offsets_found_zeiss) 
 
